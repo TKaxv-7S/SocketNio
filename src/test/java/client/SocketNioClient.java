@@ -68,8 +68,8 @@ public class SocketNioClient extends AbstractSocketNioClient {
         SocketDataDto<JSONObject> syncDataDto = new SocketDataDto<>(dataId, true);
         syncDataMap.put(dataId, syncDataDto);
         try {
-            write(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
             synchronized (syncDataDto) {
+                write(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketDataDto<JSONObject> socketDataDto = syncDataMap.remove(dataId);
@@ -107,9 +107,9 @@ public class SocketNioClient extends AbstractSocketNioClient {
             if (dataId != null) {
                 SocketDataDto<JSONObject> syncDataDto = syncDataMap.get(dataId);
                 if (syncDataDto != null) {
-                    syncDataDto.setData(socketDataDto.getData());
-                    syncDataDto.setMethod("syncReturn");
                     synchronized (syncDataDto) {
+                        syncDataDto.setData(socketDataDto.getData());
+                        syncDataDto.setMethod("syncReturn");
                         syncDataDto.notify();
                     }
                 }
