@@ -104,7 +104,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
                 Channel channel = ctx.channel();
                 Object data = socketDataHandler.handle(socketDataDto, SocketServerChannel.build(channel, this));
                 Integer clientDataId = socketDataDto.getClientDataId();
-                if (data != null && clientDataId != null) {
+                if (clientDataId != null) {
                     SocketDataDto<JSONObject> syncDataDto;
                     syncDataDto = new SocketDataDto<>(JSONUtil.parseObj(data));
                     syncDataDto.setClientDataId(clientDataId);
