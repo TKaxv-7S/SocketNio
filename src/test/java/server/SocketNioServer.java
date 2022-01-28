@@ -115,7 +115,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     @Override
-    public Integer setBytesSizeLimit() {
+    public Integer setMsgSizeLimit() {
         return null;
     }
 

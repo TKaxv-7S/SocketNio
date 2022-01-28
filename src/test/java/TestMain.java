@@ -38,8 +38,10 @@ public class TestMain {
                 log.debug("客户端第 {} 次普通写", count);
                 socketNioClient.write(socketDataDto);
                 log.debug("客户端第 {} 次普通写完成", count);
+                jsonObject.set("isAck", true);
                 log.debug("客户端第 {} 次ACK写", count);
                 log.debug("客户端第 {} 次ACK写结果：{}", count, socketNioClient.writeAck(socketDataDto));
+                jsonObject.set("isSync", true);
                 log.debug("客户端第 {} 次同步写", count);
                 log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketDataDto));
                 /*if (count % 2 == 1) {

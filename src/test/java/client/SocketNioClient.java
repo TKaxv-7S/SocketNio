@@ -132,7 +132,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public Integer setBytesSizeLimit() {
+    public Integer setMsgSizeLimit() {
         return null;
     }
 
