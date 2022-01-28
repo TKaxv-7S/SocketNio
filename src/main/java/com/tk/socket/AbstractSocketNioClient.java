@@ -213,8 +213,8 @@ public abstract class AbstractSocketNioClient {
                         Integer ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
                         SocketAckThreadDto socketAckThreadDto = ackDataMap.get(ackKey);
                         if (socketAckThreadDto != null) {
-                            socketAckThreadDto.setIsAck(true);
                             synchronized (socketAckThreadDto) {
+                                socketAckThreadDto.setIsAck(true);
                                 socketAckThreadDto.notify();
                             }
 //                            LockSupport.unpark(socketAckThreadDto.getThread());
@@ -327,16 +327,16 @@ public abstract class AbstractSocketNioClient {
         byte[] needAckBytes = {(byte) (packageData[0] & (byte) 0x7F), packageData[1], packageData[2]};
         Integer ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
         try {
-            channel.writeAndFlush(packageData);
-        } catch (Exception e) {
-            log.error("SocketNioClient写入异常", e);
-            throw e;
-        }
-        try {
             SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
             ackDataMap.put(ackKey, ackThreadDto);
+            try {
+                channel.writeAndFlush(packageData);
+            } catch (Exception e) {
+                log.error("SocketNioClient写入异常", e);
+                throw e;
+            }
             synchronized (ackThreadDto) {
-                ackThreadDto.wait(TimeUnit.SECONDS.toNanos(seconds));
+                ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
 //            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(seconds));
             SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(ackKey);

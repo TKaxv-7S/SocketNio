@@ -205,8 +205,8 @@ public abstract class AbstractSocketNioServer {
                         String key = Integer.toString(ackKey).concat(channelId.asShortText());
                         SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
                         if (socketAckThreadDto != null) {
-                            socketAckThreadDto.setIsAck(true);
                             synchronized (socketAckThreadDto) {
+                                socketAckThreadDto.setIsAck(true);
                                 socketAckThreadDto.notify();
                             }
 //                            LockSupport.unpark(socketAckThreadDto.getThread());
@@ -306,12 +306,12 @@ public abstract class AbstractSocketNioServer {
         byte[] needAckBytes = {(byte) (packageData[0] & (byte) 0x7F), packageData[1], packageData[2]};
         int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
         String key = Integer.toString(ackKey).concat(socketChannel.id().asShortText());
-        socketChannel.writeAndFlush(packageData);
         try {
             SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
             ackDataMap.put(key, ackThreadDto);
+            socketChannel.writeAndFlush(packageData);
             synchronized (ackThreadDto) {
-                ackThreadDto.wait(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
+                ackThreadDto.wait(Math.min(TimeUnit.SECONDS.toMillis(seconds), 10000));
             }
 //            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
             SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
