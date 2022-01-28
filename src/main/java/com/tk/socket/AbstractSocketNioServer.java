@@ -309,8 +309,8 @@ public abstract class AbstractSocketNioServer {
         try {
             SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
             ackDataMap.put(key, ackThreadDto);
-            socketChannel.writeAndFlush(packageData);
             synchronized (ackThreadDto) {
+                socketChannel.writeAndFlush(packageData);
                 ackThreadDto.wait(Math.min(TimeUnit.SECONDS.toMillis(seconds), 10000));
             }
 //            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));

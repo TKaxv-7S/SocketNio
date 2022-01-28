@@ -329,13 +329,13 @@ public abstract class AbstractSocketNioClient {
         try {
             SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
             ackDataMap.put(ackKey, ackThreadDto);
-            try {
-                channel.writeAndFlush(packageData);
-            } catch (Exception e) {
-                log.error("SocketNioClient写入异常", e);
-                throw e;
-            }
             synchronized (ackThreadDto) {
+                try {
+                    channel.writeAndFlush(packageData);
+                } catch (Exception e) {
+                    log.error("SocketNioClient写入异常", e);
+                    throw e;
+                }
                 ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
 //            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(seconds));
