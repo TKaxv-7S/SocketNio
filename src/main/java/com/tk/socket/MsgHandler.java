@@ -57,7 +57,12 @@ public class MsgHandler {
         this.dataConsumerThreadPoolExecutor = new DataConsumerThreadPoolExecutor<>(dataConsumer, maxDataThreadCount, singleThreadDataConsumerCount);
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
-                .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> ReferenceCountUtil.release(value.getMsg()))
+                .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> {
+                    CompositeByteBuf msg = value.getMsg();
+                    while (msg.refCnt() > 0) {
+                        ReferenceCountUtil.release(msg);
+                    }
+                })
                 //key必须使用弱引用
                 .weakKeys()
                 .build();
@@ -71,7 +76,10 @@ public class MsgHandler {
         } catch (Exception e) {
             log.error("数据解析异常", e);
             //丢弃数据并关闭连接
-            ReferenceCountUtil.release(msg);
+            log.debug("msg.refCnt：{}", msg.refCnt());
+            while (msg.refCnt() > 0) {
+                ReferenceCountUtil.release(msg);
+            }
             socketChannel.close();
             //异常才释放
             readCacheMap.invalidate(channelId);
@@ -96,13 +104,10 @@ public class MsgHandler {
                 return;
             }
             ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-            ByteBuf newMsg = msg.retainedSlice(5, msg.readableBytes() - 5);
-            msg.release();
-            msg = newMsg;
+            msg.readerIndex(msg.readerIndex() + 5);
             msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
             //5+2+3+1
             if (msgSize < 11) {
-                headMsg.release();
                 //丢弃并关闭连接
                 throw new BusinessException("报文格式错误");
             }
@@ -117,8 +122,8 @@ public class MsgHandler {
             if (msgSize == null) {
                 //补全数据
                 int writerIndex = compositeByteBuf.writerIndex();
+                readableBytes = msg.readableBytes();
                 if (writerIndex < 4) {
-                    readableBytes = msg.readableBytes();
                     if (writerIndex + readableBytes < 4) {
                         //数据不足，继续等待
                         compositeByteBuf.addComponent(true, msg);
@@ -129,12 +134,9 @@ public class MsgHandler {
                     }
                 }
                 ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-                ByteBuf newMsg = msg.retainedSlice(5, msg.readableBytes() - 5);
-                msg.release();
-                msg = newMsg;
+                msg.readerIndex(msg.readerIndex() + 5);
                 msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
-                    headMsg.release();
                     //丢弃并关闭连接
                     throw new BusinessException("报文格式错误");
                 }
@@ -147,7 +149,7 @@ public class MsgHandler {
             }
             writeIndex = compositeByteBuf.writerIndex();
         }
-        boolean isStick = false;
+        ByteBuf stickMsg = null;
         int leftDataLength = msgSize - writeIndex;
         if (leftDataLength > 0) {
             readableBytes = msg.readableBytes();
@@ -164,10 +166,8 @@ public class MsgHandler {
             } else if (i < 0) {
                 //此处粘包了，手动切割
                 compositeByteBuf.addComponent(true, msg.retainedSlice(msg.readerIndex(), leftDataLength));
-                ByteBuf newMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
+                stickMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
                 msg.release();
-                msg = newMsg;
-                isStick = true;
             } else {
                 compositeByteBuf.addComponent(true, msg);
             }
@@ -240,8 +240,8 @@ public class MsgHandler {
         }
         //正常丢弃
         readCacheMap.invalidate(channelId);
-        if (isStick) {
-            parsingMsg(ctx, msg);
+        if (stickMsg != null) {
+            parsingMsg(ctx, stickMsg);
         }
     }
 
