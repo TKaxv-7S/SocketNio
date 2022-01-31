@@ -1,8 +1,11 @@
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
 import client.SocketNioClient;
 import cn.hutool.json.JSONObject;
 import com.tk.socket.SocketDataDto;
 import io.netty.util.ResourceLeakDetector;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.LoggerFactory;
 import server.ChannelCache;
 import server.SocketNioServer;
 
@@ -26,12 +29,18 @@ public class TestMain {
         socketNioClient.initNioClientAsync();
         Thread.sleep(1000);
 
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        ch.qos.logback.classic.Logger logger = loggerContext.getLogger("root");
+//        logger.setLevel(Level.ERROR);
+        logger.setLevel(Level.DEBUG);
+
         int cycleCount = 200;
         int count = 0;
         while (count < cycleCount) {
             count++;
             try {
                 JSONObject jsonObject = new JSONObject();
+//                jsonObject.set("text", RandomUtil.randomString("你好啊", 900099));
                 jsonObject.set("test", "socket");
                 jsonObject.set("isOk", true);
                 SocketDataDto<JSONObject> socketDataDto = SocketDataDto.build("reg", jsonObject);

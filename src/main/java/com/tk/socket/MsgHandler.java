@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -27,7 +29,7 @@ public class MsgHandler {
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
-    private final Cache<ChannelId, SocketMsgDto<ByteBuf>> readCacheMap;
+    private final Cache<ChannelId, SocketMsgDto<CompositeByteBuf>> readCacheMap;
 
     private final MsgDecode msgDecode;
 
@@ -55,7 +57,7 @@ public class MsgHandler {
         this.dataConsumerThreadPoolExecutor = new DataConsumerThreadPoolExecutor<>(dataConsumer, maxDataThreadCount, singleThreadDataConsumerCount);
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
-                .removalListener((ChannelId key, SocketMsgDto<ByteBuf> value, RemovalCause removalCause) -> ReferenceCountUtil.release(value.getMsg()))
+                .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> ReferenceCountUtil.release(value.getMsg()))
                 //key必须使用弱引用
                 .weakKeys()
                 .build();
@@ -64,108 +66,116 @@ public class MsgHandler {
     public void readMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
         Channel socketChannel = ctx.channel();
         ChannelId channelId = socketChannel.id();
-        boolean isReleaseMsg = false;
         try {
-            isReleaseMsg = parsingMsg(ctx, msg);
+            parsingMsg(ctx, msg);
         } catch (Exception e) {
             log.error("数据解析异常", e);
             //丢弃数据并关闭连接
-            isReleaseMsg = true;
+            ReferenceCountUtil.release(msg);
             socketChannel.close();
             //异常才释放
             readCacheMap.invalidate(channelId);
-        } finally {
-            if (isReleaseMsg) {
-                ReferenceCountUtil.release(msg);
-            }
         }
     }
 
-    public boolean parsingMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
+    public void parsingMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
         Channel socketChannel = ctx.channel();
         ChannelId channelId = socketChannel.id();
-        ByteBuf byteBuf;
-        boolean isReleaseMsg = false;
+        CompositeByteBuf compositeByteBuf;
         int readableBytes;
         Integer msgSize;
         int writeIndex;
-        SocketMsgDto<ByteBuf> socketMsgDto = readCacheMap.getIfPresent(channelId);
+        SocketMsgDto<CompositeByteBuf> socketMsgDto = readCacheMap.getIfPresent(channelId);
         if (socketMsgDto == null) {
             readableBytes = msg.readableBytes();
-            byteBuf = Unpooled.buffer();
             if (readableBytes < 5) {
+                compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer();
                 //数据不足，继续等待
-                byteBuf.writeBytes(msg);
-                //已读取完，可释放
-                readCacheMap.put(channelId, new SocketMsgDto<>(null, byteBuf));
-                return true;
+                compositeByteBuf.addComponent(true, msg);
+                readCacheMap.put(channelId, new SocketMsgDto<>(null, compositeByteBuf));
+                return;
             }
-            byteBuf.writeBytes(msg, 5);
-            msgSize = SocketMessageUtil.checkMsgFirst(byteBuf, msgSizeLimit);
+            ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
+            ByteBuf newMsg = msg.retainedSlice(5, msg.readableBytes() - 5);
+            msg.release();
+            msg = newMsg;
+            msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
             //5+2+3+1
             if (msgSize < 11) {
+                headMsg.release();
                 //丢弃并关闭连接
                 throw new BusinessException("报文格式错误");
             }
-            writeIndex = byteBuf.writerIndex();
-            readCacheMap.put(channelId, new SocketMsgDto<>(msgSize, byteBuf));
+            compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
+            compositeByteBuf.addComponent(true, headMsg);
+            compositeByteBuf.readerIndex(5);
+            writeIndex = compositeByteBuf.writerIndex();
+            readCacheMap.put(channelId, new SocketMsgDto<>(msgSize, compositeByteBuf));
         } else {
-            byteBuf = socketMsgDto.getMsg();
+            compositeByteBuf = socketMsgDto.getMsg();
             msgSize = socketMsgDto.getSize();
             if (msgSize == null) {
                 //补全数据
-                int writerIndex = byteBuf.writerIndex();
+                int writerIndex = compositeByteBuf.writerIndex();
                 if (writerIndex < 4) {
                     readableBytes = msg.readableBytes();
                     if (writerIndex + readableBytes < 4) {
                         //数据不足，继续等待
-                        byteBuf.writeBytes(msg);
-                        //已读取完，可释放
-                        socketMsgDto.setMsg(byteBuf);
+                        compositeByteBuf.addComponent(true, msg);
+                        socketMsgDto.setMsg(compositeByteBuf);
                         //刷新
                         //readCacheMap.put(channelId, socketMsgDto);
-                        return true;
+                        return;
                     }
                 }
-                msgSize = SocketMessageUtil.checkMsgFirst(byteBuf, msgSizeLimit);
+                ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
+                ByteBuf newMsg = msg.retainedSlice(5, msg.readableBytes() - 5);
+                msg.release();
+                msg = newMsg;
+                msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
+                    headMsg.release();
                     //丢弃并关闭连接
                     throw new BusinessException("报文格式错误");
                 }
+                compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
+                compositeByteBuf.addComponent(true, headMsg);
+                compositeByteBuf.readerIndex(5);
                 socketMsgDto.setSize(msgSize);
                 //刷新
                 //readCacheMap.put(channelId, socketMsgDto);
             }
-            writeIndex = byteBuf.writerIndex();
+            writeIndex = compositeByteBuf.writerIndex();
         }
         boolean isStick = false;
-        int leftDataIndex = msgSize - writeIndex;
-        if (leftDataIndex > 0) {
+        int leftDataLength = msgSize - writeIndex;
+        if (leftDataLength > 0) {
             readableBytes = msg.readableBytes();
-            int i = leftDataIndex - readableBytes;
+            int i = leftDataLength - readableBytes;
             if (i > 0) {
                 //继续读取
-                byteBuf.writeBytes(msg);
+                compositeByteBuf.addComponent(true, msg);
                 //已读取完，可释放
                         /*if (log.isDebugEnabled()) {
                             log.debug("byteBuf处理中 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
                             log.debug("msg处理中 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
                         }*/
-                return true;
+                return;
             } else if (i < 0) {
                 //此处粘包了，手动切割
-                byteBuf.writeBytes(msg, leftDataIndex);
+                compositeByteBuf.addComponent(true, msg.retainedSlice(msg.readerIndex(), leftDataLength));
+                ByteBuf newMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
+                msg.release();
+                msg = newMsg;
                 isStick = true;
             } else {
-                byteBuf.writeBytes(msg);
-                //已读取完，可释放
-                isReleaseMsg = true;
+                compositeByteBuf.addComponent(true, msg);
             }
-        } else if (leftDataIndex < 0) {
+        } else if (leftDataLength < 0) {
             //丢弃并关闭连接
             throw new BusinessException("报文数据异常");
         }
-        Byte secretByte = SocketMessageUtil.checkMsgTail(byteBuf, msgSize);
+        Byte secretByte = SocketMessageUtil.checkMsgTail(compositeByteBuf, msgSize);
         if (secretByte == null) {
             //丢弃并关闭连接
             throw new BusinessException("报文尾部验证失败");
@@ -174,7 +184,7 @@ public class MsgHandler {
         byte[] decodeBytes;
         try {
             byte[] bytes = new byte[msgSize - 8];
-            byteBuf.getBytes(5, bytes);
+            compositeByteBuf.readBytes(bytes);
                     /*if (log.isDebugEnabled()) {
                         log.debug("byteBuf完成 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
                         log.debug("msg完成 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
@@ -207,7 +217,7 @@ public class MsgHandler {
 //                            LockSupport.unpark(socketAckThreadDto.getThread());
                     log.debug("ack成功，ackBytes：{}", ackBytes);
                     readCacheMap.invalidate(channelId);
-                    return isReleaseMsg;
+                    return;
                 }
             } else {
                 //关闭连接
@@ -215,7 +225,7 @@ public class MsgHandler {
             }
             //丢弃
             readCacheMap.invalidate(channelId);
-            return isReleaseMsg;
+            return;
         }
         if (isAckData) {
             byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
@@ -223,7 +233,7 @@ public class MsgHandler {
                 socketChannel.writeAndFlush(ackBytes);
                 log.debug("已发送ackBytes：{}", ackBytes);
                 readCacheMap.invalidate(channelId);
-                return isReleaseMsg;
+                return;
             } catch (Exception e) {
                 log.error("ack编码错误", e);
             }
@@ -231,11 +241,8 @@ public class MsgHandler {
         //正常丢弃
         readCacheMap.invalidate(channelId);
         if (isStick) {
-            if (parsingMsg(ctx, msg)) {
-                isReleaseMsg = true;
-            }
+            parsingMsg(ctx, msg);
         }
-        return isReleaseMsg;
     }
 
     public void handlerWrite(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
