@@ -77,12 +77,12 @@ public class MsgHandler {
             log.error("数据解析异常", e);
             //丢弃数据并关闭连接
             log.debug("msg.refCnt：{}", msg.refCnt());
-            while (msg.refCnt() > 0) {
-                ReferenceCountUtil.release(msg);
-            }
             socketChannel.close();
             //异常才释放
             readCacheMap.invalidate(channelId);
+            while (msg.refCnt() > 0) {
+                ReferenceCountUtil.release(msg);
+            }
         }
     }
 
@@ -165,9 +165,8 @@ public class MsgHandler {
                 return;
             } else if (i < 0) {
                 //此处粘包了，手动切割
-                compositeByteBuf.addComponent(true, msg.retainedSlice(msg.readerIndex(), leftDataLength));
+                compositeByteBuf.addComponent(true, msg.slice(msg.readerIndex(), leftDataLength));
                 stickMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
-                msg.release();
             } else {
                 compositeByteBuf.addComponent(true, msg);
             }

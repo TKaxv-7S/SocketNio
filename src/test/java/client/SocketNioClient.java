@@ -26,6 +26,9 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final byte[] tcpAppKey;
 
+    private TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
+    };
+
     public SocketNioClient(String tcpServerAddress, Integer tcpServerPort, byte[] tcpServerSecret, byte[] tcpAppKey) {
         this.tcpServerAddress = tcpServerAddress;
         this.tcpServerPort = tcpServerPort;
@@ -39,8 +42,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
 
     public SocketDataDto<JSONObject> readSocketDataDto(byte[] data) {
-        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), new TypeReference<SocketDataDto<JSONObject>>() {
-        }, true);
+        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
     }
 
     public <T> void write(SocketDataDto<T> data) {
@@ -118,7 +120,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
             }
             String method = socketDataDto.getMethod();
             if (StringUtils.isNotBlank(method)) {
-                Object data = socketDataHandler.handle(socketDataDto, SocketClientChannel.build(this));
+                Object data = socketDataHandler.handle(socketDataDto, this);
                 Integer serverDataId = socketDataDto.getServerDataId();
                 if (serverDataId != null) {
                     SocketDataDto<JSONObject> syncDataDto;

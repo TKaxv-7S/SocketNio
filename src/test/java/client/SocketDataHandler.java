@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class SocketDataHandler {
 
-    public Object handle(SocketDataDto<JSONObject> socketDataDto, SocketClientChannel clientChannel) {
+    public Object handle(SocketDataDto<JSONObject> socketDataDto, SocketNioClient socketNioClient) {
         String method = socketDataDto.getMethod();
         JSONObject data = socketDataDto.getData();
         //TODO 业务处理，同步请求则返回数据

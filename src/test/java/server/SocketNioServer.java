@@ -27,6 +27,9 @@ public class SocketNioServer extends AbstractSocketNioServer {
 
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
 
+    private TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
+    };
+
     public SocketNioServer(Integer serverPort) {
         this.serverPort = serverPort;
     }
@@ -120,8 +123,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     public SocketDataDto<JSONObject> readSocketDataDto(byte[] data) {
-        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), new TypeReference<SocketDataDto<JSONObject>>() {
-        }, true);
+        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
     }
 
     @Override
