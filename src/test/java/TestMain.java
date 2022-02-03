@@ -3,7 +3,6 @@ import ch.qos.logback.classic.LoggerContext;
 import client.SocketNioClient;
 import cn.hutool.json.JSONObject;
 import com.tk.socket.SocketDataDto;
-import io.netty.util.ResourceLeakDetector;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.ChannelCache;
@@ -18,16 +17,15 @@ public class TestMain {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
         int serverPort = 8089;
-        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
+
+//        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
 
         ChannelCache.setSecret(appKey, secretBytes);
-
         SocketNioServer socketNioServer = new SocketNioServer(serverPort);
-        socketNioServer.initNioServer();
+        socketNioServer.initNioServerSync();
 
         SocketNioClient socketNioClient = new SocketNioClient("127.0.0.1", serverPort, secretBytes, appKey.getBytes(StandardCharsets.UTF_8));
-        socketNioClient.initNioClientAsync();
-        Thread.sleep(1000);
+        socketNioClient.initNioClientSync();
 
         LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
         ch.qos.logback.classic.Logger logger = loggerContext.getLogger("root");

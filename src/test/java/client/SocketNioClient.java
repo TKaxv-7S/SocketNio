@@ -62,6 +62,9 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data, int seconds) {
+        if (isClosed()) {
+            initNioClientSync();
+        }
         Integer dataId = data.getClientDataId();
         if (dataId == null) {
             dataId = ThreadLocalRandom.current().nextInt();

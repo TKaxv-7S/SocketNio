@@ -10,6 +10,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Slf4j
@@ -91,61 +92,98 @@ public abstract class AbstractSocketNioServer {
         return writeAck(socketChannel, data, 10);
     }
 
-    public synchronized void initNioServer() {
-        ThreadUtil.execute(() -> {
-            //new 一个主线程组
-            EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-            //new 一个工作线程组
-            EventLoopGroup workGroup = new NioEventLoopGroup(setEventLoopThreadCount());
-            ServerBootstrap bootstrap = new ServerBootstrap()
-                    .group(bossGroup, workGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        protected void initChannel(SocketChannel socketChannel) throws Exception {
-                            socketChannel.pipeline()
-                                    .addLast(new ServerInHandler())
-                                    .addLast(new ServerOutHandler());
-                        }
-                    })
-                    .option(ChannelOption.SO_BACKLOG, 128)
-                    //首选直接内存
-                    .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
-                    //设置队列大小
+    private final Runnable initRunnable = () -> {
+        //new 一个主线程组
+        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        EventLoopGroup workGroup = new NioEventLoopGroup(setEventLoopThreadCount());
+        try {
+            Channel channel = null;
+            synchronized (this) {
+                if (!isInit) {
+                    //new 一个工作线程组
+                    ServerBootstrap bootstrap = new ServerBootstrap()
+                            .group(bossGroup, workGroup)
+                            .channel(NioServerSocketChannel.class)
+                            .childHandler(new ChannelInitializer<SocketChannel>() {
+                                @Override
+                                protected void initChannel(SocketChannel socketChannel) throws Exception {
+                                    socketChannel.pipeline()
+                                            .addLast(new ServerInHandler())
+                                            .addLast(new ServerOutHandler());
+                                }
+                            })
+                            .option(ChannelOption.SO_BACKLOG, 128)
+                            //首选直接内存
+                            .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
+                            //设置队列大小
 //                .option(ChannelOption.SO_BACKLOG, 1024)
-                    // 两小时内没有数据的通信时,TCP会自动发送一个活动探测数据报文
-                    .childOption(ChannelOption.TCP_NODELAY, true)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.SO_RCVBUF, 128 * 1024)
-                    .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
-                    //服务端低水位线设置为3M，高水位线设置为6M
-                    .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(3 * 1024 * 1024, 6 * 1024 * 1024));
-            try {
-                port = setPort();
-                if (msgHandler == null) {
-                    msgHandler = new MsgHandler(
-                            10
-                            , setMsgSizeLimit()
-                            , this::decode
-                            , this::encode
-                            , setDataConsumer()
-                            , setMaxHandlerDataThreadCount()
-                            , setSingleThreadDataConsumerCount()
-                    );
+                            // 两小时内没有数据的通信时,TCP会自动发送一个活动探测数据报文
+                            .childOption(ChannelOption.TCP_NODELAY, true)
+                            .childOption(ChannelOption.SO_KEEPALIVE, true)
+                            .childOption(ChannelOption.SO_RCVBUF, 128 * 1024)
+                            .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                            //服务端低水位线设置为3M，高水位线设置为6M
+                            .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(3 * 1024 * 1024, 6 * 1024 * 1024));
+                    port = setPort();
+                    ChannelFuture future = bootstrap.bind(port).sync();
+                    channel = future.channel();
+                    if (msgHandler == null) {
+                        msgHandler = new MsgHandler(
+                                10
+                                , setMsgSizeLimit()
+                                , this::decode
+                                , this::encode
+                                , setDataConsumer()
+                                , setMaxHandlerDataThreadCount()
+                                , setSingleThreadDataConsumerCount()
+                        );
+                    }
+                    log.info("SocketNioServer已启动，开始监听端口: {}", port);
+                    isInit = true;
+                    this.notify();
                 }
-                ChannelFuture future = bootstrap.bind(port).sync();
-                log.info("SocketNioServer已启动，开始监听端口: {}", port);
-                isInit = true;
-                future.channel().closeFuture().sync();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } finally {
-                //关闭主线程组
-                bossGroup.shutdownGracefully();
-                //关闭工作线程组
-                workGroup.shutdownGracefully();
             }
-        });
+            if (channel != null) {
+                channel.closeFuture().sync();
+            } else {
+                throw new BusinessException("TCP服务端初始化连接失败");
+            }
+        } catch (InterruptedException e) {
+            log.error("TCP服务端初始化连接异常", e);
+            throw new BusinessException("TCP服务端初始化连接异常");
+        } finally {
+            //关闭主线程组
+            bossGroup.shutdownGracefully();
+            //关闭工作线程组
+            workGroup.shutdownGracefully();
+        }
+    };
+
+    public synchronized void initNioServerAsync() {
+        if (!isInit) {
+            ThreadUtil.execute(initRunnable);
+        }
+    }
+
+    public synchronized void initNioServerSync() {
+        initNioServerSync(10);
+    }
+
+    public synchronized void initNioServerSync(int seconds) {
+        if (!isInit) {
+            synchronized (this) {
+                ThreadUtil.execute(initRunnable);
+                try {
+                    this.wait(TimeUnit.SECONDS.toMillis(seconds));
+                } catch (InterruptedException e) {
+                    log.error("TCP服务端同步初始化连接异常", e);
+                    throw new BusinessException("TCP服务端同步初始化连接异常");
+                }
+            }
+            if (!isInit) {
+                throw new BusinessException("TCP服务端同步初始化连接失败");
+            }
+        }
     }
 
 }
