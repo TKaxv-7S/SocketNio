@@ -95,12 +95,12 @@ public abstract class AbstractSocketNioServer {
     private final Runnable initRunnable = () -> {
         //new 一个主线程组
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        //new 一个工作线程组
         EventLoopGroup workGroup = new NioEventLoopGroup(setEventLoopThreadCount());
         try {
             Channel channel = null;
             synchronized (this) {
                 if (!isInit) {
-                    //new 一个工作线程组
                     ServerBootstrap bootstrap = new ServerBootstrap()
                             .group(bossGroup, workGroup)
                             .channel(NioServerSocketChannel.class)
