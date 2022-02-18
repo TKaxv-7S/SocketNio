@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Slf4j
-public class MsgHandler {
+public class SocketMsgHandler {
 
     private final int msgSizeLimit;
 
@@ -35,13 +35,13 @@ public class MsgHandler {
 
     private final MsgEncode msgEncode;
 
-    private final DataConsumerThreadPoolExecutor<ChannelHandlerContext, byte[]> dataConsumerThreadPoolExecutor;
+    private final SocketDataConsumerThreadPoolExecutor<ChannelHandlerContext, byte[]> socketDataConsumerThreadPoolExecutor;
 
-    public MsgHandler() {
-        throw new BusinessException("该类不可使用无参构造函数实例化");
+    public SocketMsgHandler() {
+        throw new SocketException("该类不可使用无参构造函数实例化");
     }
 
-    public MsgHandler(
+    public SocketMsgHandler(
             Integer msgExpireSeconds
             , Integer msgSizeLimit
             , MsgDecode msgDecode
@@ -54,7 +54,7 @@ public class MsgHandler {
         this.msgSizeLimit = Optional.ofNullable(msgSizeLimit).orElse(4 * 1024 * 1024);
         this.msgDecode = msgDecode;
         this.msgEncode = msgEncode;
-        this.dataConsumerThreadPoolExecutor = new DataConsumerThreadPoolExecutor<>(dataConsumer, maxDataThreadCount, singleThreadDataConsumerCount);
+        this.socketDataConsumerThreadPoolExecutor = new SocketDataConsumerThreadPoolExecutor<>(dataConsumer, maxDataThreadCount, singleThreadDataConsumerCount);
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> {
@@ -109,7 +109,7 @@ public class MsgHandler {
             //5+2+3+1
             if (msgSize < 11) {
                 //丢弃并关闭连接
-                throw new BusinessException("报文格式错误");
+                throw new SocketException("报文格式错误");
             }
             compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
             compositeByteBuf.addComponent(true, headMsg);
@@ -138,7 +138,7 @@ public class MsgHandler {
                 msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
                     //丢弃并关闭连接
-                    throw new BusinessException("报文格式错误");
+                    throw new SocketException("报文格式错误");
                 }
                 compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
                 compositeByteBuf.addComponent(true, headMsg);
@@ -172,12 +172,12 @@ public class MsgHandler {
             }
         } else if (leftDataLength < 0) {
             //丢弃并关闭连接
-            throw new BusinessException("报文数据异常");
+            throw new SocketException("报文数据异常");
         }
         Byte secretByte = SocketMessageUtil.checkMsgTail(compositeByteBuf, msgSize);
         if (secretByte == null) {
             //丢弃并关闭连接
-            throw new BusinessException("报文尾部验证失败");
+            throw new SocketException("报文尾部验证失败");
         }
         //读取完成，写入队列
         byte[] decodeBytes;
@@ -192,14 +192,14 @@ public class MsgHandler {
         } catch (Exception e) {
             log.debug("解码错误", e);
             //丢弃并关闭连接
-            throw new BusinessException("报文解码错误");
+            throw new SocketException("报文解码错误");
         }
         int length = decodeBytes.length;
         boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
         log.debug("接收isAckData：{}", isAckData);
         if (length > 3) {
             log.debug("开始处理数据，channelId：{}", channelId);
-            dataConsumerThreadPoolExecutor.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
+            socketDataConsumerThreadPoolExecutor.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
         } else {
             if (!isAckData) {
                 //接收ackBytes
@@ -220,7 +220,7 @@ public class MsgHandler {
                 }
             } else {
                 //关闭连接
-                throw new BusinessException("报文数据异常");
+                throw new SocketException("报文数据异常");
             }
             //丢弃
             readCacheMap.invalidate(channelId);
@@ -290,7 +290,7 @@ public class MsgHandler {
         } catch (InterruptedException e) {
             log.error("写入异常", e);
             ackDataMap.remove(key);
-            throw new BusinessException("写入异常");
+            throw new SocketException("写入异常");
         } catch (Exception e) {
             log.error("setAndWaitAck异常", e);
             ackDataMap.remove(key);

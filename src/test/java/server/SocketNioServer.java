@@ -66,13 +66,13 @@ public class SocketNioServer extends AbstractSocketNioServer {
             SocketDataDto<JSONObject> socketDataDto = syncDataMap.remove(dataId);
             String method = socketDataDto.getMethod();
             if (!StringUtils.equals(method, "syncReturn")) {
-                throw new BusinessException("写入超时");
+                throw new SocketException("写入超时");
             }
             return socketDataDto;
         } catch (InterruptedException e) {
             log.error("同步写入异常", e);
             syncDataMap.remove(dataId);
-            throw new BusinessException("同步写入异常");
+            throw new SocketException("同步写入异常");
         } catch (Exception e) {
             log.error("同步写入异常", e);
             syncDataMap.remove(dataId);

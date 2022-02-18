@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Slf4j
-public class DataConsumerThreadPoolExecutor<C, D> {
+public class SocketDataConsumerThreadPoolExecutor<C, D> {
 
     private final ThreadPoolExecutor dataThreadPoolExecutor;
 
@@ -59,11 +59,11 @@ public class DataConsumerThreadPoolExecutor<C, D> {
         return false;
     }*/
 
-    public DataConsumerThreadPoolExecutor() {
-        throw new BusinessException("该类不可使用无参构造函数实例化");
+    public SocketDataConsumerThreadPoolExecutor() {
+        throw new SocketException("该类不可使用无参构造函数实例化");
     }
 
-    public DataConsumerThreadPoolExecutor(
+    public SocketDataConsumerThreadPoolExecutor(
             BiConsumer<C, D> dataConsumer
             , int maxDataThreadCount
             , int singleThreadDataConsumerCount

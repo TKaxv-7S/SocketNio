@@ -10,6 +10,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -30,7 +31,7 @@ public abstract class AbstractSocketNioClient {
         return channel;
     }
 
-    private MsgHandler msgHandler;
+    private SocketMsgHandler socketMsgHandler;
 
     public abstract String setHost();
 
@@ -54,7 +55,9 @@ public abstract class AbstractSocketNioClient {
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
             super.channelRegistered(ctx);
-            log.info("服务端channelId：{}，已注册", ctx.channel().id());
+            Channel channel = ctx.channel();
+            InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
+            log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
         }
 
         @Override
@@ -66,7 +69,7 @@ public abstract class AbstractSocketNioClient {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msgObj) throws Exception {
             ByteBuf msg = (ByteBuf) msgObj;
-            msgHandler.readMsg(ctx, msg);
+            socketMsgHandler.readMsg(ctx, msg);
         }
     }
 
@@ -74,7 +77,7 @@ public abstract class AbstractSocketNioClient {
     class ClientOutHandler extends ChannelOutboundHandlerAdapter {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            msgHandler.handlerWrite(ctx, msg, promise);
+            socketMsgHandler.handlerWrite(ctx, msg, promise);
         }
     }
 
@@ -86,7 +89,7 @@ public abstract class AbstractSocketNioClient {
         if (!isClosed()) {
             synchronized (lockObj) {
                 if (!isClosed()) {
-                    msgHandler.cleanUpReadCacheMap();
+                    socketMsgHandler.cleanUpReadCacheMap();
                     channel.close();
                     isInit = false;
                 }
@@ -99,14 +102,14 @@ public abstract class AbstractSocketNioClient {
         if (isClosed()) {
             initNioClientSync();
         }
-        msgHandler.write(channel, data);
+        socketMsgHandler.write(channel, data);
     }
 
     public boolean writeAck(byte[] data, int seconds) {
         if (isClosed()) {
             initNioClientSync();
         }
-        return msgHandler.writeAck(channel, data, Math.min(seconds, 10));
+        return socketMsgHandler.writeAck(channel, data, Math.min(seconds, 10));
     }
 
     public boolean writeAck(byte[] data) {
@@ -144,8 +147,8 @@ public abstract class AbstractSocketNioClient {
                             .option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1024 * 1024, 2 * 1024 * 1024));
                     ChannelFuture channelFuture = bootstrap.connect(host, port);
                     channel = channelFuture.sync().channel();
-                    if (msgHandler == null) {
-                        msgHandler = new MsgHandler(
+                    if (socketMsgHandler == null) {
+                        socketMsgHandler = new SocketMsgHandler(
                                 30
                                 , setMsgSizeLimit()
                                 , (channelId, data, secretByte) -> decode(data, secretByte)
@@ -163,11 +166,11 @@ public abstract class AbstractSocketNioClient {
             if (channel != null) {
                 channel.closeFuture().sync();
             } else {
-                throw new BusinessException("TCP客户端创建连接失败");
+                throw new SocketException("TCP客户端创建连接失败");
             }
         } catch (InterruptedException e) {
             log.error("TCP客户端创建连接异常", e);
-            throw new BusinessException("TCP客户端创建连接异常");
+            throw new SocketException("TCP客户端创建连接异常");
         } finally {
             //关闭主线程组
             bossGroup.shutdownGracefully();
@@ -192,11 +195,11 @@ public abstract class AbstractSocketNioClient {
                     lockObj.wait(TimeUnit.SECONDS.toMillis(seconds));
                 } catch (InterruptedException e) {
                     log.error("TCP客户端同步创建连接异常", e);
-                    throw new BusinessException("TCP客户端同步创建连接异常");
+                    throw new SocketException("TCP客户端同步创建连接异常");
                 }
             }
             if (!isInit) {
-                throw new BusinessException("TCP客户端同步创建连接失败");
+                throw new SocketException("TCP客户端同步创建连接失败");
             }
         }
     }
