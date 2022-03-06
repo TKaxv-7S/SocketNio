@@ -85,7 +85,6 @@ public class SocketNioServer extends AbstractSocketNioServer {
         SocketServerConfig socketServerConfig = new SocketServerConfig();
         socketServerConfig.setPort(serverPort);
         socketServerConfig.setMsgSizeLimit(null);
-        socketServerConfig.setMaxHandlerDataThreadCount(10);
         socketServerConfig.setSingleThreadDataConsumerCount(100);
         socketServerConfig.setEventLoopThreadCount(10);
         socketServerConfig.setMaxHandlerDataThreadCount(200);
