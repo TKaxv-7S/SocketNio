@@ -59,6 +59,8 @@ public class TestMain {
             }
         }
         log.debug("客户端 {} 次循环测试完成", count);
+        socketNioClient.shutdown();
+        socketNioServer.shutdown();
         System.exit(0);
     }
 }

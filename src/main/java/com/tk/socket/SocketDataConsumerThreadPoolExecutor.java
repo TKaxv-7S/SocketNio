@@ -23,42 +23,6 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
         return dataQueue;
     }
 
-    public void putData(C channel, D data) throws InterruptedException {
-        //如果队列已满，需阻塞
-        dataQueue.put(new SocketDataConsumerDto<>(channel, data));
-    }
-
-    /*public boolean setAndWaitAck(Object key, int seconds) {
-        try {
-            Thread thread = Thread.currentThread();
-            SocketAckThreadDto ackThreadDto = new SocketAckThreadDto(thread);
-            ackDataMap.put(key, ackThreadDto);
-            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(seconds));
-//            synchronized (ackThreadDto) {
-//                ackThreadDto.wait(TimeUnit.SECONDS.toNanos(seconds));
-//            }
-            SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
-            return socketAckThreadDto != null && socketAckThreadDto.getIsAck();
-        } catch (Exception e) {
-            log.error("setAndWaitAck异常", e);
-            ackDataMap.remove(key);
-            throw e;
-        }
-    }
-
-    public boolean getAck(Object key) {
-        SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
-        if (socketAckThreadDto != null) {
-            socketAckThreadDto.setIsAck(true);
-            LockSupport.unpark(socketAckThreadDto.getThread());
-//            synchronized (socketAckThreadDto) {
-//                socketAckThreadDto.notify();
-//            }
-            return true;
-        }
-        return false;
-    }*/
-
     public SocketDataConsumerThreadPoolExecutor() {
         throw new SocketException("该类不可使用无参构造函数实例化");
     }
@@ -69,7 +33,7 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
             , int singleThreadDataConsumerCount
     ) {
 
-        dataThreadPoolExecutor = ThreadUtil.newExecutor(1, maxDataThreadCount);
+        dataThreadPoolExecutor = ThreadUtil.newExecutor(2, Math.min(maxDataThreadCount, 2));
 
         Runnable dataRunnable = () -> {
             if (dataConsumer != null) {
@@ -103,7 +67,7 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
             }
         };
 
-        new Thread(() -> {
+        dataThreadPoolExecutor.execute(() -> {
             for (; ; ) {
                 try {
                     int activeThreadCount = dataThreadPoolExecutor.getActiveCount();
@@ -128,7 +92,31 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
                     log.error("data线程分配睡眠异常", e);
                 }
             }
-        }).start();
+        });
+    }
+
+    public void putData(C channel, D data) throws InterruptedException {
+        //如果队列已满，需阻塞
+        dataQueue.put(new SocketDataConsumerDto<>(channel, data));
+    }
+
+    public boolean shutdown() {
+        int i = 0;
+        try {
+            while (i < 100) {
+                if (dataQueue.isEmpty()) {
+                    dataThreadPoolExecutor.shutdown();
+                    return true;
+                }
+                i++;
+                Thread.sleep(100);
+            }
+        } catch (Exception e) {
+            log.error("socket消费线程池关闭异常", e);
+            throw new SocketException("socket消费线程池关闭异常");
+        }
+        log.error("socket消费线程池关闭失败，未处理数据条数：{}", dataQueue.size());
+        return false;
     }
 
 }

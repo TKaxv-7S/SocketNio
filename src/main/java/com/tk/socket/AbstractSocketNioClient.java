@@ -17,37 +17,27 @@ import java.util.function.Consumer;
 @Slf4j
 public abstract class AbstractSocketNioClient {
 
-    private Boolean isInit = false;
+    private final EventLoopGroup bossGroup = new NioEventLoopGroup(2);
+
+    private Bootstrap bootstrap = null;
 
     public Boolean getIsInit() {
-        return isInit;
+        return bootstrap != null;
     }
 
     private final Object lockObj = new Object();
 
-    private Channel channel;
-
-    public Channel getChannel() {
-        return channel;
-    }
+    private SocketNioChannelPool channelPool;
 
     private SocketMsgHandler socketMsgHandler;
 
-    public abstract String setHost();
-
-    public abstract Integer setPort();
+    public abstract SocketClientConfig setConfig();
 
     public abstract SocketEncodeDto encode(byte[] data);
 
     public abstract byte[] decode(byte[] data, byte secretByte);
 
     public abstract Consumer<byte[]> setDataConsumer();
-
-    public abstract Integer setMsgSizeLimit();
-
-    public abstract int setMaxHandlerDataThreadCount();
-
-    public abstract int setSingleThreadDataConsumerCount();
 
     @ChannelHandler.Sharable
     class ClientInHandler extends ChannelInboundHandlerAdapter {
@@ -57,7 +47,11 @@ public abstract class AbstractSocketNioClient {
             super.channelRegistered(ctx);
             Channel channel = ctx.channel();
             InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
-            log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+            if (inetSocketAddress != null) {
+                log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+            } else {
+                log.info("服务端channelId：{}，address：null，port：null，已注册", channel.id());
+            }
         }
 
         @Override
@@ -81,35 +75,44 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
-    public boolean isClosed() {
-        return channel == null || !channel.isActive();
-    }
-
-    public void close() {
-        if (!isClosed()) {
+    public void shutdown() {
+        if (getIsInit()) {
             synchronized (lockObj) {
-                if (!isClosed()) {
-                    socketMsgHandler.cleanUpReadCacheMap();
-                    channel.close();
-                    isInit = false;
+                if (getIsInit()) {
+                    if (socketMsgHandler.shutdown()) {
+                        channelPool.close();
+                        //关闭主线程组
+                        bossGroup.shutdownGracefully();
+                        bootstrap = null;
+                    }
                 }
             }
         }
-        log.info("连接已关闭");
+        log.info("SocketNioClient已关闭");
     }
 
     public void write(byte[] data) {
-        if (isClosed()) {
+        if (!getIsInit()) {
             initNioClientSync();
         }
-        socketMsgHandler.write(channel, data);
+        Channel channel = channelPool.borrowChannel();
+        try {
+            socketMsgHandler.write(channel, data);
+        } finally {
+            channelPool.returnChannel(channel);
+        }
     }
 
     public boolean writeAck(byte[] data, int seconds) {
-        if (isClosed()) {
+        if (!getIsInit()) {
             initNioClientSync();
         }
-        return socketMsgHandler.writeAck(channel, data, Math.min(seconds, 10));
+        Channel channel = channelPool.borrowChannel();
+        try {
+            return socketMsgHandler.writeAck(channel, data, Math.min(seconds, 10));
+        } finally {
+            channelPool.returnChannel(channel);
+        }
     }
 
     public boolean writeAck(byte[] data) {
@@ -117,14 +120,11 @@ public abstract class AbstractSocketNioClient {
     }
 
     private final Runnable initRunnable = () -> {
-        EventLoopGroup bossGroup = new NioEventLoopGroup(2);
         try {
             synchronized (lockObj) {
-                if (!isInit || isClosed()) {
-                    //主线程组
-                    String host = setHost();
-                    Integer port = setPort();
-                    Bootstrap bootstrap = new Bootstrap()
+                if (!getIsInit()) {
+                    SocketClientConfig config = setConfig();
+                    bootstrap = new Bootstrap()
                             .group(bossGroup)
                             .channel(NioSocketChannel.class)
                             .handler(new ChannelInitializer<SocketChannel>() {
@@ -145,40 +145,38 @@ public abstract class AbstractSocketNioClient {
                             .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
                             //客户端低水位线设置为1M，高水位线设置为2M
                             .option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1024 * 1024, 2 * 1024 * 1024));
-                    ChannelFuture channelFuture = bootstrap.connect(host, port);
-                    channel = channelFuture.sync().channel();
+                    //主线程组
+                    String host = config.getHost();
+                    Integer port = config.getPort();
                     if (socketMsgHandler == null) {
                         socketMsgHandler = new SocketMsgHandler(
                                 30
-                                , setMsgSizeLimit()
+                                , config.getMsgSizeLimit()
                                 , (channelId, data, secretByte) -> decode(data, secretByte)
                                 , (channelId, data) -> encode(data)
                                 , (channelHandlerContext, bytes) -> setDataConsumer().accept(bytes)
-                                , setMaxHandlerDataThreadCount()
-                                , setSingleThreadDataConsumerCount()
+                                , config.getMaxHandlerDataThreadCount()
+                                , config.getSingleThreadDataConsumerCount()
                         );
                     }
+
+                    channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
+
                     log.info("SocketNioClient已连接，地址：{}，端口: {}", host, port);
-                    isInit = true;
                     lockObj.notify();
                 }
             }
-            if (channel != null) {
-                channel.closeFuture().sync();
-            } else {
+            if (channelPool == null) {
                 throw new SocketException("TCP客户端创建连接失败");
             }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             log.error("TCP客户端创建连接异常", e);
             throw new SocketException("TCP客户端创建连接异常");
-        } finally {
-            //关闭主线程组
-            bossGroup.shutdownGracefully();
         }
     };
 
     public synchronized void initNioClientAsync() {
-        if (!isInit || isClosed()) {
+        if (!getIsInit()) {
             ThreadUtil.execute(initRunnable);
         }
     }
@@ -188,7 +186,7 @@ public abstract class AbstractSocketNioClient {
     }
 
     public synchronized void initNioClientSync(int seconds) {
-        if (!isInit || isClosed()) {
+        if (!getIsInit()) {
             synchronized (lockObj) {
                 ThreadUtil.execute(initRunnable);
                 try {
@@ -198,7 +196,7 @@ public abstract class AbstractSocketNioClient {
                     throw new SocketException("TCP客户端同步创建连接异常");
                 }
             }
-            if (!isInit) {
+            if (!getIsInit()) {
                 throw new SocketException("TCP客户端同步创建连接失败");
             }
         }

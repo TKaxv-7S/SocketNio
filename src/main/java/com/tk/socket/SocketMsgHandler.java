@@ -311,4 +311,13 @@ public class SocketMsgHandler {
     interface MsgEncode {
         SocketEncodeDto encode(ChannelId channelId, byte[] data);
     }
+
+    public synchronized boolean shutdown() {
+        if (socketDataConsumerThreadPoolExecutor.shutdown()) {
+            readCacheMap.cleanUp();
+            ackDataMap.clear();
+            return true;
+        }
+        return false;
+    }
 }

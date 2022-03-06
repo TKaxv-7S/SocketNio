@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -26,7 +27,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final byte[] tcpAppKey;
 
-    private TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
+    private final TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
     };
 
     public SocketNioClient(String tcpServerAddress, Integer tcpServerPort, byte[] tcpServerSecret, byte[] tcpAppKey) {
@@ -38,7 +39,6 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final Map<Integer, SocketDataDto<JSONObject>> syncDataMap = new ConcurrentHashMap<>();
 
-    //TODO 实现
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
 
     public SocketDataDto<JSONObject> readSocketDataDto(byte[] data) {
@@ -62,7 +62,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data, int seconds) {
-        if (isClosed()) {
+        if (!getIsInit()) {
             initNioClientSync();
         }
         Integer dataId = data.getClientDataId();
@@ -95,13 +95,18 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public String setHost() {
-        return tcpServerAddress;
-    }
-
-    @Override
-    public Integer setPort() {
-        return tcpServerPort;
+    public SocketClientConfig setConfig() {
+        SocketClientConfig socketClientConfig = new SocketClientConfig();
+        socketClientConfig.setHost(tcpServerAddress);
+        socketClientConfig.setPort(tcpServerPort);
+        socketClientConfig.setMsgSizeLimit(null);
+        socketClientConfig.setMaxHandlerDataThreadCount(10);
+        socketClientConfig.setSingleThreadDataConsumerCount(100);
+        socketClientConfig.setPoolMaxTotal(10);
+        socketClientConfig.setPoolMaxIdle(5);
+        socketClientConfig.setPoolMinIdle(2);
+        socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
+        return socketClientConfig;
     }
 
     @Override
@@ -137,11 +142,6 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public Integer setMsgSizeLimit() {
-        return null;
-    }
-
-    @Override
     public SocketEncodeDto encode(byte[] data) {
         byte[] encodeData = Base64SecretUtil.encodeToByteArray(data, tcpServerSecret);
         int dataLength = encodeData.length;
@@ -158,16 +158,6 @@ public class SocketNioClient extends AbstractSocketNioClient {
     @Override
     public byte[] decode(byte[] data, byte secretByte) {
         return Base64SecretUtil.decodeToByteArray(data, tcpServerSecret);
-    }
-
-    @Override
-    public int setMaxHandlerDataThreadCount() {
-        return 10;
-    }
-
-    @Override
-    public int setSingleThreadDataConsumerCount() {
-        return 100;
     }
 
 }

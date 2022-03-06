@@ -27,7 +27,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
 
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
 
-    private TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
+    private final TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
     };
 
     public SocketNioServer(Integer serverPort) {
@@ -81,8 +81,16 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     @Override
-    public Integer setPort() {
-        return serverPort;
+    public SocketServerConfig setConfig() {
+        SocketServerConfig socketServerConfig = new SocketServerConfig();
+        socketServerConfig.setPort(serverPort);
+        socketServerConfig.setMsgSizeLimit(null);
+        socketServerConfig.setMaxHandlerDataThreadCount(10);
+        socketServerConfig.setSingleThreadDataConsumerCount(100);
+        socketServerConfig.setEventLoopThreadCount(10);
+        socketServerConfig.setMaxHandlerDataThreadCount(200);
+        socketServerConfig.setSingleThreadDataConsumerCount(100);
+        return socketServerConfig;
     }
 
     @Override
@@ -115,11 +123,6 @@ public class SocketNioServer extends AbstractSocketNioServer {
                 }
             }
         };
-    }
-
-    @Override
-    public Integer setMsgSizeLimit() {
-        return null;
     }
 
     public SocketDataDto<JSONObject> readSocketDataDto(byte[] data) {
@@ -167,21 +170,6 @@ public class SocketNioServer extends AbstractSocketNioServer {
             }
         }
         return null;
-    }
-
-    @Override
-    public int setEventLoopThreadCount() {
-        return 10;
-    }
-
-    @Override
-    public int setMaxHandlerDataThreadCount() {
-        return 200;
-    }
-
-    @Override
-    public int setSingleThreadDataConsumerCount() {
-        return 100;
     }
 
 }
