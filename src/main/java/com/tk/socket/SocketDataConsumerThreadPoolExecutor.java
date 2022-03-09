@@ -37,7 +37,8 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
 
         Runnable dataRunnable = () -> {
             if (dataConsumer != null) {
-                for (; ; ) {
+                Thread thread = Thread.currentThread();
+                while (!thread.isInterrupted()) {
                     try {
                         SocketDataConsumerDto<C, D> take = dataQueue.take();
                         dataConsumer.accept(take.getChannel(), take.getData());
@@ -68,7 +69,8 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
         };
 
         dataThreadPoolExecutor.execute(() -> {
-            for (; ; ) {
+            Thread thread = Thread.currentThread();
+            while (!thread.isInterrupted()) {
                 try {
                     int activeThreadCount = dataThreadPoolExecutor.getActiveCount();
                     int leftCanUseThreadCount = maxDataThreadCount - activeThreadCount;
@@ -89,7 +91,8 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
                 try {
                     Thread.sleep(60000);
                 } catch (InterruptedException e) {
-                    log.error("data线程分配睡眠异常", e);
+                    log.info("data线程已关闭");
+                    return;
                 }
             }
         });
@@ -101,22 +104,13 @@ public class SocketDataConsumerThreadPoolExecutor<C, D> {
     }
 
     public boolean shutdown() {
-        int i = 0;
         try {
-            while (i < 100) {
-                if (dataQueue.isEmpty()) {
-                    dataThreadPoolExecutor.shutdown();
-                    return true;
-                }
-                i++;
-                Thread.sleep(100);
-            }
+            dataThreadPoolExecutor.shutdown();
         } catch (Exception e) {
-            log.error("socket消费线程池关闭异常", e);
-            throw new SocketException("socket消费线程池关闭异常");
+            log.error("socket消费线程池关闭失败，未处理数据条数：{}", dataQueue.size());
+            throw new SocketException(e, "socket消费线程池关闭异常");
         }
-        log.error("socket消费线程池关闭失败，未处理数据条数：{}", dataQueue.size());
-        return false;
+        return true;
     }
 
 }

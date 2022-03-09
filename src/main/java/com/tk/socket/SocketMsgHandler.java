@@ -312,7 +312,7 @@ public class SocketMsgHandler {
         SocketEncodeDto encode(ChannelId channelId, byte[] data);
     }
 
-    public synchronized boolean shutdown() {
+    public boolean shutdown() {
         if (socketDataConsumerThreadPoolExecutor.shutdown()) {
             readCacheMap.cleanUp();
             ackDataMap.clear();

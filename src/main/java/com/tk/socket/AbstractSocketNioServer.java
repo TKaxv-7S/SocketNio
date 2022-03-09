@@ -170,17 +170,17 @@ public abstract class AbstractSocketNioServer {
         }
     };
 
-    public synchronized void initNioServerAsync() {
+    public void initNioServerAsync() {
         if (!getIsInit()) {
             ThreadUtil.execute(initRunnable);
         }
     }
 
-    public synchronized void initNioServerSync() {
+    public void initNioServerSync() {
         initNioServerSync(10);
     }
 
-    public synchronized void initNioServerSync(int seconds) {
+    public void initNioServerSync(int seconds) {
         if (!getIsInit()) {
             synchronized (this) {
                 ThreadUtil.execute(initRunnable);
