@@ -7,7 +7,7 @@ import com.tk.socket.*;
 import com.tk.utils.Base64SecretUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelId;
+import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -129,10 +129,10 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     @Override
-    public SocketEncodeDto encode(ChannelId channelId, byte[] data) {
-        String appKey = ChannelCache.getAppKey(channelId);
+    public SocketEncodeDto encode(Channel channel, byte[] data) {
+        String appKey = SocketChannelSecretUtil.getAppKey(channel);
         if (appKey != null) {
-            byte[] serverSecret = ChannelCache.getSecret(appKey);
+            byte[] serverSecret = SocketChannelSecretUtil.getSecret(appKey);
             if (serverSecret != null) {
                 return new SocketEncodeDto(Base64SecretUtil.encodeToByteArray(data, serverSecret), (byte) 0xFF);
             }
@@ -141,25 +141,25 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     @Override
-    public byte[] decode(ChannelId channelId, byte[] data, byte secretByte) {
+    public byte[] decode(Channel channel, byte[] data, byte secretByte) {
         int appKeyLength = SocketMessageUtil.byteArrayToInt(data);
-        String appKey = ChannelCache.getAppKey(channelId);
+        String appKey = SocketChannelSecretUtil.getAppKey(channel);
         if (appKey == null) {
             byte[] appKeyBytes = new byte[appKeyLength];
             System.arraycopy(data, 4, appKeyBytes, 0, appKeyLength);
             appKey = new String(appKeyBytes, StandardCharsets.UTF_8);
-            byte[] serverSecret = ChannelCache.getSecret(appKey);
+            byte[] serverSecret = SocketChannelSecretUtil.getSecret(appKey);
             if (serverSecret != null) {
                 int index = 4 + appKeyLength;
                 int length = data.length - index;
                 byte[] decode = new byte[length];
                 System.arraycopy(data, index, decode, 0, length);
                 byte[] bytes = Base64SecretUtil.decodeToByteArray(decode, serverSecret);
-                ChannelCache.setAppKey(channelId, appKey);
+                SocketChannelSecretUtil.setAppKey(channel, appKey);
                 return bytes;
             }
         } else {
-            byte[] serverSecret = ChannelCache.getSecret(appKey);
+            byte[] serverSecret = SocketChannelSecretUtil.getSecret(appKey);
             if (serverSecret != null) {
                 int index = 4 + appKeyLength;
                 int length = data.length - index;
@@ -171,4 +171,15 @@ public class SocketNioServer extends AbstractSocketNioServer {
         return null;
     }
 
+    private static final AttributeKey<String> appKeyAttr = AttributeKey.valueOf("appKey");
+
+    @Override
+    public Boolean isClient(Channel channel) {
+        return channel.hasAttr(appKeyAttr);
+    }
+
+    @Override
+    protected Long setUnknownWaitMsgTimeoutSeconds() {
+        return 2L;
+    }
 }

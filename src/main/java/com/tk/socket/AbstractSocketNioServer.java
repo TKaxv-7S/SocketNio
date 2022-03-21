@@ -1,6 +1,9 @@
 package com.tk.socket;
 
 import cn.hutool.core.thread.ThreadUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -35,12 +38,51 @@ public abstract class AbstractSocketNioServer {
 
     public abstract SocketServerConfig setConfig();
 
-    public abstract SocketEncodeDto encode(ChannelId channelId, byte[] data);
+    public abstract SocketEncodeDto encode(Channel channel, byte[] data);
 
-    public abstract byte[] decode(ChannelId channelId, byte[] data, byte secretByte);
+    public abstract byte[] decode(Channel channel, byte[] data, byte secretByte);
 
     public abstract BiConsumer<ChannelHandlerContext, byte[]> setDataConsumer();
 
+    public abstract Boolean isClient(Channel channel);
+
+    protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
+        Channel channel = ctx.channel();
+        InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
+        log.info("客户端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+    }
+
+    protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
+        log.info("客户端channelId：{}，已注销", ctx.channel().id());
+    }
+
+    protected Long setUnknownWaitMsgTimeoutSeconds() {
+        return 5L;
+    }
+
+    private final Cache<ChannelId, Channel> unknownChannelCache = Caffeine.newBuilder()
+            .expireAfterWrite(setUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
+            .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
+                if (value != null) {
+                    if (!isClient(value)) {
+                        value.close();
+                        log.info("客户端channelId：{}，已关闭", value.id());
+                    }
+                }
+            })
+            //key必须使用弱引用
+            .weakKeys()
+            .build();
+
+    private void setUnknownChannelCache(Channel channel) {
+        if (!isClient(channel)) {
+            unknownChannelCache.put(channel.id(), channel);
+        }
+    }
+
+    private void delUnknownChannelCache(ChannelId channelId) {
+        unknownChannelCache.invalidate(channelId);
+    }
 
     @ChannelHandler.Sharable
     class ServerInHandler extends ChannelInboundHandlerAdapter {
@@ -48,15 +90,15 @@ public abstract class AbstractSocketNioServer {
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
             super.channelRegistered(ctx);
-            Channel channel = ctx.channel();
-            InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
-            log.info("客户端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+            setUnknownChannelCache(ctx.channel());
+            channelRegisteredEvent(ctx);
         }
 
         @Override
         public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
             super.channelUnregistered(ctx);
-            log.info("客户端channelId：{}，已注销", ctx.channel().id());
+            delUnknownChannelCache(ctx.channel().id());
+            channelUnregisteredEvent(ctx);
         }
 
         @Override
@@ -87,6 +129,8 @@ public abstract class AbstractSocketNioServer {
                             workGroup.shutdownGracefully();
                         }
                         bootstrap = null;
+                        channel = null;
+                        socketMsgHandler = null;
                     }
                 }
             }

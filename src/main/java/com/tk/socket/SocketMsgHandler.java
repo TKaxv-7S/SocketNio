@@ -58,9 +58,11 @@ public class SocketMsgHandler {
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> {
-                    CompositeByteBuf msg = value.getMsg();
-                    while (msg.refCnt() > 0) {
-                        ReferenceCountUtil.release(msg);
+                    if (value != null) {
+                        CompositeByteBuf msg = value.getMsg();
+                        while (msg.refCnt() > 0) {
+                            ReferenceCountUtil.release(msg);
+                        }
                     }
                 })
                 //key必须使用弱引用
@@ -188,7 +190,7 @@ public class SocketMsgHandler {
                         log.debug("byteBuf完成 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
                         log.debug("msg完成 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
                     }*/
-            decodeBytes = msgDecode.decode(channelId, bytes, secretByte);
+            decodeBytes = msgDecode.decode(ctx.channel(), bytes, secretByte);
         } catch (Exception e) {
             log.debug("解码错误", e);
             //丢弃并关闭连接
@@ -246,10 +248,10 @@ public class SocketMsgHandler {
 
     public void handlerWrite(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         if (msg instanceof byte[]) {
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel().id(), (byte[]) msg))), promise);
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), (byte[]) msg))), promise);
         } else {
             //传输其他类型数据时暂不支持ACK，需使用byte[]
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel().id(), SocketMessageUtil.packageData(JSONUtil.toJsonStr(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), SocketMessageUtil.packageData(JSONUtil.toJsonStr(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
         }
         log.debug("数据已发送，channelId：{}", ctx.channel().id());
     }
@@ -304,17 +306,17 @@ public class SocketMsgHandler {
 
     @FunctionalInterface
     interface MsgDecode {
-        byte[] decode(ChannelId channelId, byte[] data, byte secretByte);
+        byte[] decode(Channel channel, byte[] data, byte secretByte);
     }
 
     @FunctionalInterface
     interface MsgEncode {
-        SocketEncodeDto encode(ChannelId channelId, byte[] data);
+        SocketEncodeDto encode(Channel channel, byte[] data);
     }
 
     public boolean shutdown() {
         if (socketDataConsumerThreadPoolExecutor.shutdown()) {
-            readCacheMap.cleanUp();
+            cleanUpReadCacheMap();
             ackDataMap.clear();
             return true;
         }

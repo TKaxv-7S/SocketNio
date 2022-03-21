@@ -39,25 +39,33 @@ public abstract class AbstractSocketNioClient {
 
     public abstract Consumer<byte[]> setDataConsumer();
 
+    protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
+        Channel channel = ctx.channel();
+        InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
+        if (inetSocketAddress != null) {
+            log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+        } else {
+            log.info("服务端channelId：{}，address：null，port：null，已注册", channel.id());
+        }
+    }
+
+    protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
+        log.info("服务端channelId：{}，已注销", ctx.channel().id());
+    }
+
     @ChannelHandler.Sharable
     class ClientInHandler extends ChannelInboundHandlerAdapter {
 
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
             super.channelRegistered(ctx);
-            Channel channel = ctx.channel();
-            InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
-            if (inetSocketAddress != null) {
-                log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
-            } else {
-                log.info("服务端channelId：{}，address：null，port：null，已注册", channel.id());
-            }
+            channelRegisteredEvent(ctx);
         }
 
         @Override
         public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
             super.channelUnregistered(ctx);
-            log.info("服务端channelId：{}，已注销", ctx.channel().id());
+            channelUnregisteredEvent(ctx);
         }
 
         @Override
@@ -84,6 +92,7 @@ public abstract class AbstractSocketNioClient {
                         //关闭主线程组
                         bossGroup.shutdownGracefully();
                         bootstrap = null;
+                        socketMsgHandler = null;
                     }
                 }
             }
