@@ -1,7 +1,6 @@
 package server;
 
 import cn.hutool.core.lang.TypeReference;
-import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.tk.socket.*;
 import com.tk.utils.Base64SecretUtil;
@@ -23,52 +22,52 @@ public class SocketNioServer extends AbstractSocketNioServer {
 
     private final Integer serverPort;
 
-    private final Map<Integer, SocketDataDto<JSONObject>> syncDataMap = new ConcurrentHashMap<>();
+    private final Map<Integer, SocketJSONDataDto> syncDataMap = new ConcurrentHashMap<>();
 
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
 
-    private final TypeReference<SocketDataDto<JSONObject>> socketDataDtoTypeReference = new TypeReference<SocketDataDto<JSONObject>>() {
+    private final TypeReference<SocketJSONDataDto> socketDataDtoTypeReference = new TypeReference<SocketJSONDataDto>() {
     };
 
     public SocketNioServer(Integer serverPort) {
         this.serverPort = serverPort;
     }
 
-    public <T> void write(SocketDataDto<T> data, Channel channel) {
+    public void write(SocketJSONDataDto data, Channel channel) {
         write(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
     }
 
-    public <T> boolean writeAck(SocketDataDto<T> data, Channel channel) {
+    public boolean writeAck(SocketJSONDataDto data, Channel channel) {
         return writeAck(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
     }
 
-    public <T> boolean writeAck(SocketDataDto<T> data, Channel channel, int seconds) {
+    public boolean writeAck(SocketJSONDataDto data, Channel channel, int seconds) {
         return writeAck(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
-    public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data, Channel channel) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data, Channel channel) {
         return writeSync(data, 10, channel);
     }
 
-    public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data, int seconds, Channel channel) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data, int seconds, Channel channel) {
         Integer dataId = data.getServerDataId();
         if (dataId == null) {
             dataId = ThreadLocalRandom.current().nextInt();
             data.setServerDataId(dataId);
         }
-        SocketDataDto<JSONObject> syncDataDto = new SocketDataDto<>(dataId, false);
+        SocketJSONDataDto syncDataDto = new SocketJSONDataDto(dataId, false);
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
                 write(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
                 syncDataDto.wait(Math.min(TimeUnit.SECONDS.toMillis(seconds), 10000));
             }
-            SocketDataDto<JSONObject> socketDataDto = syncDataMap.remove(dataId);
-            String method = socketDataDto.getMethod();
+            SocketJSONDataDto socketJSONDataDto = syncDataMap.remove(dataId);
+            String method = socketJSONDataDto.getMethod();
             if (!StringUtils.equals(method, "syncReturn")) {
                 throw new SocketException("写入超时");
             }
-            return socketDataDto;
+            return socketJSONDataDto;
         } catch (InterruptedException e) {
             log.error("同步写入异常", e);
             syncDataMap.remove(dataId);
@@ -95,13 +94,13 @@ public class SocketNioServer extends AbstractSocketNioServer {
     @Override
     public BiConsumer<ChannelHandlerContext, byte[]> setDataConsumer() {
         return (ctx, bytes) -> {
-            SocketDataDto<JSONObject> socketDataDto = readSocketDataDto(bytes);
-            Integer serverDataId = socketDataDto.getServerDataId();
+            SocketJSONDataDto socketJSONDataDto = readSocketDataDto(bytes);
+            Integer serverDataId = socketJSONDataDto.getServerDataId();
             if (serverDataId != null) {
-                SocketDataDto<JSONObject> syncDataDto = syncDataMap.get(serverDataId);
+                SocketJSONDataDto syncDataDto = syncDataMap.get(serverDataId);
                 if (syncDataDto != null) {
                     synchronized (syncDataDto) {
-                        syncDataDto.setData(socketDataDto.getData());
+                        syncDataDto.setData(socketJSONDataDto.getData());
                         syncDataDto.setMethod("syncReturn");
                         syncDataDto.notify();
                     }
@@ -109,14 +108,14 @@ public class SocketNioServer extends AbstractSocketNioServer {
                 //不再继续执行，即便method不为空
                 return;
             }
-            String method = socketDataDto.getMethod();
+            String method = socketJSONDataDto.getMethod();
             if (StringUtils.isNotBlank(method)) {
                 Channel channel = ctx.channel();
-                Object data = socketDataHandler.handle(socketDataDto, SocketServerChannel.build(channel, this));
-                Integer clientDataId = socketDataDto.getClientDataId();
+                Object data = socketDataHandler.handle(socketJSONDataDto, SocketServerChannel.build(channel, this));
+                Integer clientDataId = socketJSONDataDto.getClientDataId();
                 if (clientDataId != null) {
-                    SocketDataDto<JSONObject> syncDataDto;
-                    syncDataDto = new SocketDataDto<>(JSONUtil.parseObj(data));
+                    SocketJSONDataDto syncDataDto;
+                    syncDataDto = new SocketJSONDataDto(data);
                     syncDataDto.setClientDataId(clientDataId);
                     this.write(syncDataDto, channel);
                 }
@@ -124,7 +123,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
         };
     }
 
-    public SocketDataDto<JSONObject> readSocketDataDto(byte[] data) {
+    public SocketJSONDataDto readSocketDataDto(byte[] data) {
         return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
     }
 

@@ -3,7 +3,7 @@ import ch.qos.logback.classic.LoggerContext;
 import client.SocketNioClient;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.json.JSONObject;
-import com.tk.socket.SocketDataDto;
+import com.tk.socket.SocketJSONDataDto;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketChannelSecretUtil;
@@ -46,16 +46,16 @@ public class TestMain {
 //                jsonObject.set("text", RandomUtil.randomString("你好啊", 900099));
                     jsonObject.set("test", "socket");
                     jsonObject.set("isOk", true);
-                    SocketDataDto<JSONObject> socketDataDto = SocketDataDto.build("reg", jsonObject);
+                    SocketJSONDataDto socketJSONDataDto = SocketJSONDataDto.build("reg", jsonObject);
                     log.debug("客户端第 {} 次普通写", count);
-                    socketNioClient.write(socketDataDto);
+                    socketNioClient.write(socketJSONDataDto);
                     log.debug("客户端第 {} 次普通写完成", count);
                     jsonObject.set("isAck", true);
                     log.debug("客户端第 {} 次ACK写", count);
-                    log.debug("客户端第 {} 次ACK写结果：{}", count, socketNioClient.writeAck(socketDataDto));
+                    log.debug("客户端第 {} 次ACK写结果：{}", count, socketNioClient.writeAck(socketJSONDataDto));
                     jsonObject.set("isSync", true);
                     log.debug("客户端第 {} 次同步写", count);
-                    log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketDataDto));
+                    log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketJSONDataDto));
                     /*if (count % 2 == 1) {
                         this.close();
                     }*/

@@ -1,7 +1,6 @@
 package server;
 
-import cn.hutool.json.JSONObject;
-import com.tk.socket.SocketDataDto;
+import com.tk.socket.SocketJSONDataDto;
 import io.netty.channel.Channel;
 
 import java.io.Serializable;
@@ -37,23 +36,23 @@ public class SocketServerChannel implements Serializable {
         return new SocketServerChannel(channel, socketNioServer);
     }
 
-    public <T> void write(SocketDataDto<T> data) {
+    public void write(SocketJSONDataDto data) {
         socketNioServer.write(data, channel);
     }
 
-    public <T> boolean writeAck(SocketDataDto<T> data) {
+    public boolean writeAck(SocketJSONDataDto data) {
         return socketNioServer.writeAck(data, channel);
     }
 
-    public <T> boolean writeAck(SocketDataDto<T> data, int seconds) {
+    public boolean writeAck(SocketJSONDataDto data, int seconds) {
         return socketNioServer.writeAck(data, channel, seconds);
     }
 
-    public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data) {
         return socketNioServer.writeSync(data, 10, channel);
     }
 
-    public <T> SocketDataDto<JSONObject> writeSync(SocketDataDto<T> data, int seconds) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data, int seconds) {
         return socketNioServer.writeSync(data, seconds, channel);
     }
 
