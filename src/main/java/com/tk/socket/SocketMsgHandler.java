@@ -65,8 +65,6 @@ public class SocketMsgHandler {
                         }
                     }
                 })
-                //key必须使用弱引用
-                .weakKeys()
                 .build();
     }
 

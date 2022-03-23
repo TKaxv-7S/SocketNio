@@ -70,8 +70,6 @@ public abstract class AbstractSocketNioServer {
                     }
                 }
             })
-            //key必须使用弱引用
-            .weakKeys()
             .build();
 
     private void setUnknownChannelCache(Channel channel) {

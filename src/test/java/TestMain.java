@@ -38,6 +38,7 @@ public class TestMain {
         ThreadUtil.execute(() -> {
             int cycleCount = 200;
             int count = 0;
+            long startTime = System.currentTimeMillis();
             while (count < cycleCount) {
                 count++;
                 try {
@@ -64,6 +65,7 @@ public class TestMain {
                 }
             }
             log.debug("客户端 {} 次循环测试完成", count);
+            log.debug("耗时：{}毫秒", System.currentTimeMillis() - startTime);
             socketNioClient.shutdown();
             socketNioServer.shutdown();
             System.exit(0);
