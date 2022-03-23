@@ -28,7 +28,7 @@ public class SocketMessageUtil {
         packageMsg[msgSize - 3] = msgSizeFirstByte;
         packageMsg[msgSize - 2] = packageMsg[msgSize / 2];
         packageMsg[msgSize - 1] = secretByte;
-        if (log.isDebugEnabled()) {
+        /*if (log.isDebugEnabled()) {
             log.debug("封装报文 长度：{}，头部：{},{},{},{},{}，尾部：{},{},{}"
                     , msgSize
                     , packageMsg[0]
@@ -40,7 +40,7 @@ public class SocketMessageUtil {
                     , packageMsg[msgSize - 2]
                     , packageMsg[msgSize - 1]
             );
-        }
+        }*/
         return packageMsg;
     }
 
@@ -63,7 +63,7 @@ public class SocketMessageUtil {
         if (msgSize > dataSizeLimit) {
             return 0;
         }
-        if (log.isDebugEnabled()) {
+        /*if (log.isDebugEnabled()) {
             log.debug("检查报文 长度：{}，头部：{},{},{},{},{}"
                     , msgSize
                     , msg.getByte(0)
@@ -72,7 +72,7 @@ public class SocketMessageUtil {
                     , msg.getByte(3)
                     , msg.getByte(4)
             );
-        }
+        }*/
         return msgSize;
     }
 

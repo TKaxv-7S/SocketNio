@@ -198,15 +198,13 @@ public class SocketMsgHandler {
         }
         int length = decodeBytes.length;
         boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
-        log.debug("接收isAckData：{}", isAckData);
         if (length > 3) {
-            log.debug("开始处理数据，channelId：{}", channelId);
+            log.debug("数据已接收，channelId：{}", channelId);
             socketDataConsumerThreadPoolExecutor.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
         } else {
             if (!isAckData) {
                 //接收ackBytes
                 byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                log.debug("ack接收，ackBytes：{}", ackBytes);
                 int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
                 String key = Integer.toString(ackKey).concat(channelId.asShortText());
                 SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
@@ -216,9 +214,11 @@ public class SocketMsgHandler {
                         socketAckThreadDto.notify();
                     }
 //                            LockSupport.unpark(socketAckThreadDto.getThread());
-                    log.debug("ack成功，ackBytes：{}", ackBytes);
+                    log.debug("接收ack字节：{}，已完成", ackBytes);
                     readCacheMap.invalidate(channelId);
                     return;
+                } else {
+                    log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
                 }
             } else {
                 //关闭连接
@@ -232,7 +232,7 @@ public class SocketMsgHandler {
             byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
             try {
                 socketChannel.writeAndFlush(ackBytes);
-                log.debug("已发送ackBytes：{}", ackBytes);
+                log.debug("发送ack字节：{}", ackBytes);
                 readCacheMap.invalidate(channelId);
                 return;
             } catch (Exception e) {
@@ -266,7 +266,7 @@ public class SocketMsgHandler {
     }
 
     /**
-     * 等待确认时间最久10秒
+     * 同步写
      *
      * @param socketChannel
      * @param data
@@ -283,18 +283,18 @@ public class SocketMsgHandler {
             ackDataMap.put(key, ackThreadDto);
             synchronized (ackThreadDto) {
                 socketChannel.writeAndFlush(packageData);
-                log.debug("等待needAckBytes：{}", needAckBytes);
+                log.debug("等待ack字节：{}", needAckBytes);
                 ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
 //            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
             SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
             return socketAckThreadDto != null && socketAckThreadDto.getIsAck();
         } catch (InterruptedException e) {
-            log.error("写入异常", e);
+            log.error("同步写异常", e);
             ackDataMap.remove(key);
-            throw new SocketException("写入异常");
+            throw new SocketException("同步写异常");
         } catch (Exception e) {
-            log.error("setAndWaitAck异常", e);
+            log.error("同步写异常", e);
             ackDataMap.remove(key);
             throw e;
         }
