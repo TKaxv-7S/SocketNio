@@ -44,23 +44,23 @@ public class SocketNioClient extends AbstractSocketNioClient {
         return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
     }
 
-    public <T> void write(SocketJSONDataDto data) {
+    public void write(SocketJSONDataDto data) {
         write(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
     }
 
-    public <T> boolean writeAck(SocketJSONDataDto data) {
+    public boolean writeAck(SocketJSONDataDto data) {
         return writeAck(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
     }
 
-    public <T> boolean writeAck(SocketJSONDataDto data, int seconds) {
+    public boolean writeAck(SocketJSONDataDto data, int seconds) {
         return writeAck(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
-    public <T> SocketJSONDataDto writeSync(SocketJSONDataDto data) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data) {
         return writeSync(data, 10);
     }
 
-    public <T> SocketJSONDataDto writeSync(SocketJSONDataDto data, int seconds) {
+    public SocketJSONDataDto writeSync(SocketJSONDataDto data, int seconds) {
         if (!getIsInit()) {
             initNioClientSync();
         }
