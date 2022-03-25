@@ -3,13 +3,16 @@ import ch.qos.logback.classic.LoggerContext;
 import client.SocketNioClient;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.json.JSONObject;
+import com.tk.socket.SocketClientConfig;
 import com.tk.socket.SocketJSONDataDto;
+import com.tk.socket.SocketServerConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketChannelSecretUtil;
 import server.SocketNioServer;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 @Slf4j
 public class TestMain {
@@ -17,15 +20,32 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
+        SocketChannelSecretUtil.setSecret(appKey, secretBytes);
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
 
-        SocketChannelSecretUtil.setSecret(appKey, secretBytes);
-        SocketNioServer socketNioServer = new SocketNioServer(serverPort);
+        SocketServerConfig socketServerConfig = new SocketServerConfig();
+        socketServerConfig.setPort(serverPort);
+        socketServerConfig.setMsgSizeLimit(null);
+        socketServerConfig.setSingleThreadDataConsumerCount(100);
+        socketServerConfig.setEventLoopThreadCount(10);
+        socketServerConfig.setMaxHandlerDataThreadCount(200);
+        socketServerConfig.setSingleThreadDataConsumerCount(100);
+        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig);
         socketNioServer.initNioServerSync();
 
-        SocketNioClient socketNioClient = new SocketNioClient("127.0.0.1", serverPort, secretBytes, appKey.getBytes(StandardCharsets.UTF_8));
+        SocketClientConfig socketClientConfig = new SocketClientConfig();
+        socketClientConfig.setHost("127.0.0.1");
+        socketClientConfig.setPort(serverPort);
+        socketClientConfig.setMsgSizeLimit(null);
+        socketClientConfig.setMaxHandlerDataThreadCount(10);
+        socketClientConfig.setSingleThreadDataConsumerCount(100);
+        socketClientConfig.setPoolMaxTotal(10);
+        socketClientConfig.setPoolMaxIdle(5);
+        socketClientConfig.setPoolMinIdle(2);
+        socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
+        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, secretBytes, appKey.getBytes(StandardCharsets.UTF_8));
         socketNioClient.initNioClientSync();
 
         Thread.sleep(1000);

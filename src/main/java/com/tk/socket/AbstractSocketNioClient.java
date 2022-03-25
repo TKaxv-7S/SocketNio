@@ -17,8 +17,6 @@ import java.util.function.Consumer;
 @Slf4j
 public abstract class AbstractSocketNioClient {
 
-    private final EventLoopGroup bossGroup = new NioEventLoopGroup(2);
-
     private Bootstrap bootstrap = null;
 
     public Boolean getIsInit() {
@@ -31,7 +29,66 @@ public abstract class AbstractSocketNioClient {
 
     private SocketMsgHandler socketMsgHandler;
 
-    public abstract SocketClientConfig setConfig();
+    private final Runnable initRunnable;
+
+    public final SocketClientConfig config;
+
+    public AbstractSocketNioClient(SocketClientConfig config) {
+        this.config = config;
+        this.initRunnable = () -> {
+            try {
+                synchronized (lockObj) {
+                    if (!getIsInit()) {
+                        bootstrap = new Bootstrap()
+                                .group(new NioEventLoopGroup(config.getBossLoopThreadCount()))
+                                .channel(NioSocketChannel.class)
+                                .handler(new ChannelInitializer<SocketChannel>() {
+                                    @Override
+                                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                                        socketChannel.pipeline()
+                                                .addLast(new ClientInHandler())
+                                                .addLast(new ClientOutHandler());
+                                    }
+                                })
+                                //首选直接内存
+                                .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
+                                //设置队列大小
+                                //.option(ChannelOption.SO_BACKLOG, 1024)
+                                .option(ChannelOption.TCP_NODELAY, true)
+                                .option(ChannelOption.SO_KEEPALIVE, true)
+                                .option(ChannelOption.SO_RCVBUF, 4096 * 1024)
+                                .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                                //客户端低水位线设置为1M，高水位线设置为2M
+                                .option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1024 * 1024, 2 * 1024 * 1024));
+                        String host = config.getHost();
+                        Integer port = config.getPort();
+                        if (socketMsgHandler == null) {
+                            socketMsgHandler = new SocketMsgHandler(
+                                    30
+                                    , config.getMsgSizeLimit()
+                                    , (channelId, data, secretByte) -> decode(data, secretByte)
+                                    , (channelId, data) -> encode(data)
+                                    , (channelHandlerContext, bytes) -> setDataConsumer().accept(bytes)
+                                    , config.getMaxHandlerDataThreadCount()
+                                    , config.getSingleThreadDataConsumerCount()
+                            );
+                        }
+
+                        channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
+
+                        log.info("SocketNioClient已连接，地址：{}，端口: {}", host, port);
+                        lockObj.notify();
+                    }
+                }
+                if (channelPool == null) {
+                    throw new SocketException("TCP客户端创建连接失败");
+                }
+            } catch (Exception e) {
+                log.error("TCP客户端创建连接异常", e);
+                throw new SocketException("TCP客户端创建连接异常");
+            }
+        };
+    }
 
     public abstract SocketEncodeDto encode(byte[] data);
 
@@ -83,23 +140,6 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
-    public void shutdown() {
-        if (getIsInit()) {
-            synchronized (lockObj) {
-                if (getIsInit()) {
-                    if (socketMsgHandler.shutdown()) {
-                        channelPool.close();
-                        //关闭主线程组
-                        bossGroup.shutdownGracefully();
-                        bootstrap = null;
-                        socketMsgHandler = null;
-                    }
-                }
-            }
-        }
-        log.info("SocketNioClient已关闭");
-    }
-
     public void write(byte[] data) {
         if (!getIsInit()) {
             initNioClientSync();
@@ -128,62 +168,6 @@ public abstract class AbstractSocketNioClient {
         return writeAck(data, 10);
     }
 
-    private final Runnable initRunnable = () -> {
-        try {
-            synchronized (lockObj) {
-                if (!getIsInit()) {
-                    SocketClientConfig config = setConfig();
-                    bootstrap = new Bootstrap()
-                            .group(bossGroup)
-                            .channel(NioSocketChannel.class)
-                            .handler(new ChannelInitializer<SocketChannel>() {
-                                @Override
-                                protected void initChannel(SocketChannel socketChannel) throws Exception {
-                                    socketChannel.pipeline()
-                                            .addLast(new ClientInHandler())
-                                            .addLast(new ClientOutHandler());
-                                }
-                            })
-                            //首选直接内存
-                            .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
-                            //设置队列大小
-                            //.option(ChannelOption.SO_BACKLOG, 1024)
-                            .option(ChannelOption.TCP_NODELAY, true)
-                            .option(ChannelOption.SO_KEEPALIVE, true)
-                            .option(ChannelOption.SO_RCVBUF, 4096 * 1024)
-                            .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
-                            //客户端低水位线设置为1M，高水位线设置为2M
-                            .option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1024 * 1024, 2 * 1024 * 1024));
-                    //主线程组
-                    String host = config.getHost();
-                    Integer port = config.getPort();
-                    if (socketMsgHandler == null) {
-                        socketMsgHandler = new SocketMsgHandler(
-                                30
-                                , config.getMsgSizeLimit()
-                                , (channelId, data, secretByte) -> decode(data, secretByte)
-                                , (channelId, data) -> encode(data)
-                                , (channelHandlerContext, bytes) -> setDataConsumer().accept(bytes)
-                                , config.getMaxHandlerDataThreadCount()
-                                , config.getSingleThreadDataConsumerCount()
-                        );
-                    }
-
-                    channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
-
-                    log.info("SocketNioClient已连接，地址：{}，端口: {}", host, port);
-                    lockObj.notify();
-                }
-            }
-            if (channelPool == null) {
-                throw new SocketException("TCP客户端创建连接失败");
-            }
-        } catch (Exception e) {
-            log.error("TCP客户端创建连接异常", e);
-            throw new SocketException("TCP客户端创建连接异常");
-        }
-    };
-
     public synchronized void initNioClientAsync() {
         if (!getIsInit()) {
             ThreadUtil.execute(initRunnable);
@@ -209,5 +193,24 @@ public abstract class AbstractSocketNioClient {
                 throw new SocketException("TCP客户端同步创建连接失败");
             }
         }
+    }
+
+    public void shutdown() {
+        if (getIsInit()) {
+            synchronized (lockObj) {
+                if (getIsInit()) {
+                    if (socketMsgHandler.shutdown()) {
+                        channelPool.close();
+                        if (bootstrap != null) {
+                            //关闭线程组
+                            bootstrap.config().group().shutdownGracefully();
+                        }
+                        bootstrap = null;
+                        socketMsgHandler = null;
+                    }
+                }
+            }
+        }
+        log.info("SocketNioClient已关闭");
     }
 }

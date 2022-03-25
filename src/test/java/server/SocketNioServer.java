@@ -6,7 +6,6 @@ import com.tk.socket.*;
 import com.tk.utils.Base64SecretUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -20,8 +19,6 @@ import java.util.function.BiConsumer;
 @Slf4j
 public class SocketNioServer extends AbstractSocketNioServer {
 
-    private final Integer serverPort;
-
     private final Map<Integer, SocketJSONDataDto> syncDataMap = new ConcurrentHashMap<>();
 
     private final SocketDataHandler socketDataHandler = new SocketDataHandler();
@@ -29,8 +26,8 @@ public class SocketNioServer extends AbstractSocketNioServer {
     private final TypeReference<SocketJSONDataDto> socketDataDtoTypeReference = new TypeReference<SocketJSONDataDto>() {
     };
 
-    public SocketNioServer(Integer serverPort) {
-        this.serverPort = serverPort;
+    public SocketNioServer(SocketServerConfig config) {
+        super(config);
     }
 
     public void write(SocketJSONDataDto data, Channel channel) {
@@ -77,18 +74,6 @@ public class SocketNioServer extends AbstractSocketNioServer {
             syncDataMap.remove(dataId);
             throw e;
         }
-    }
-
-    @Override
-    public SocketServerConfig setConfig() {
-        SocketServerConfig socketServerConfig = new SocketServerConfig();
-        socketServerConfig.setPort(serverPort);
-        socketServerConfig.setMsgSizeLimit(null);
-        socketServerConfig.setSingleThreadDataConsumerCount(100);
-        socketServerConfig.setEventLoopThreadCount(10);
-        socketServerConfig.setMaxHandlerDataThreadCount(200);
-        socketServerConfig.setSingleThreadDataConsumerCount(100);
-        return socketServerConfig;
     }
 
     @Override
@@ -170,15 +155,9 @@ public class SocketNioServer extends AbstractSocketNioServer {
         return null;
     }
 
-    private static final AttributeKey<String> appKeyAttr = AttributeKey.valueOf("appKey");
-
     @Override
     public Boolean isClient(Channel channel) {
-        return channel.hasAttr(appKeyAttr);
+        return SocketChannelSecretUtil.hasAppKey(channel);
     }
 
-    @Override
-    protected Long setUnknownWaitMsgTimeoutSeconds() {
-        return 2L;
-    }
 }

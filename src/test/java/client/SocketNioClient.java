@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -18,10 +17,6 @@ import java.util.function.Consumer;
 @Slf4j
 public class SocketNioClient extends AbstractSocketNioClient {
 
-    private final String tcpServerAddress;
-
-    private final Integer tcpServerPort;
-
     private final byte[] tcpServerSecret;
 
     private final byte[] tcpAppKey;
@@ -29,9 +24,8 @@ public class SocketNioClient extends AbstractSocketNioClient {
     private final TypeReference<SocketJSONDataDto> socketDataDtoTypeReference = new TypeReference<SocketJSONDataDto>() {
     };
 
-    public SocketNioClient(String tcpServerAddress, Integer tcpServerPort, byte[] tcpServerSecret, byte[] tcpAppKey) {
-        this.tcpServerAddress = tcpServerAddress;
-        this.tcpServerPort = tcpServerPort;
+    public SocketNioClient(SocketClientConfig config, byte[] tcpServerSecret, byte[] tcpAppKey) {
+        super(config);
         this.tcpServerSecret = tcpServerSecret;
         this.tcpAppKey = tcpAppKey;
     }
@@ -91,21 +85,6 @@ public class SocketNioClient extends AbstractSocketNioClient {
             syncDataMap.remove(dataId);
             throw e;
         }
-    }
-
-    @Override
-    public SocketClientConfig setConfig() {
-        SocketClientConfig socketClientConfig = new SocketClientConfig();
-        socketClientConfig.setHost(tcpServerAddress);
-        socketClientConfig.setPort(tcpServerPort);
-        socketClientConfig.setMsgSizeLimit(null);
-        socketClientConfig.setMaxHandlerDataThreadCount(10);
-        socketClientConfig.setSingleThreadDataConsumerCount(100);
-        socketClientConfig.setPoolMaxTotal(10);
-        socketClientConfig.setPoolMaxIdle(5);
-        socketClientConfig.setPoolMinIdle(2);
-        socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
-        return socketClientConfig;
     }
 
     @Override

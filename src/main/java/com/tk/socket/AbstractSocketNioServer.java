@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.bootstrap.ServerBootstrapConfig;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -20,12 +21,6 @@ import java.util.function.BiConsumer;
 @Slf4j
 public abstract class AbstractSocketNioServer {
 
-    //主线程组
-    private final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-
-    //工作线程组
-    private EventLoopGroup workGroup;
-
     private ServerBootstrap bootstrap;
 
     private Channel channel = null;
@@ -36,7 +31,79 @@ public abstract class AbstractSocketNioServer {
 
     private SocketMsgHandler socketMsgHandler;
 
-    public abstract SocketServerConfig setConfig();
+    private final Runnable initRunnable;
+
+    public final SocketServerConfig config;
+
+    private final Cache<ChannelId, Channel> unknownChannelCache;
+
+    public AbstractSocketNioServer(SocketServerConfig config) {
+        this.config = config;
+        this.unknownChannelCache = Caffeine.newBuilder()
+                .expireAfterWrite(config.getUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
+                .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
+                    if (value != null) {
+                        if (!isClient(value)) {
+                            value.close();
+                            log.info("客户端channelId：{}，已关闭", value.id());
+                        }
+                    }
+                })
+                .build();
+        this.initRunnable = () -> {
+            try {
+                synchronized (this) {
+                    if (!getIsInit()) {
+                        bootstrap = new ServerBootstrap()
+                                .group(new NioEventLoopGroup(config.getBossLoopThreadCount()), new NioEventLoopGroup(config.getEventLoopThreadCount()))
+                                .channel(NioServerSocketChannel.class)
+                                .childHandler(new ChannelInitializer<SocketChannel>() {
+                                    @Override
+                                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                                        socketChannel.pipeline()
+                                                .addLast(new ServerInHandler())
+                                                .addLast(new ServerOutHandler());
+                                    }
+                                })
+                                .option(ChannelOption.SO_BACKLOG, 128)
+                                //首选直接内存
+                                .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
+                                //设置队列大小
+//                .option(ChannelOption.SO_BACKLOG, 1024)
+                                // 两小时内没有数据的通信时,TCP会自动发送一个活动探测数据报文
+                                .childOption(ChannelOption.TCP_NODELAY, true)
+                                .childOption(ChannelOption.SO_KEEPALIVE, true)
+                                .childOption(ChannelOption.SO_RCVBUF, 128 * 1024)
+                                .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                                //服务端低水位线设置为3M，高水位线设置为6M
+                                .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(3 * 1024 * 1024, 6 * 1024 * 1024));
+                        Integer port = config.getPort();
+                        ChannelFuture future = bootstrap.bind(port).sync();
+                        channel = future.channel();
+                        if (socketMsgHandler == null) {
+                            socketMsgHandler = new SocketMsgHandler(
+                                    10
+                                    , config.getMsgSizeLimit()
+                                    , this::decode
+                                    , this::encode
+                                    , setDataConsumer()
+                                    , config.getMaxHandlerDataThreadCount()
+                                    , config.getSingleThreadDataConsumerCount()
+                            );
+                        }
+                        log.info("SocketNioServer已启动，开始监听端口: {}", port);
+                        this.notify();
+                    }
+                }
+                if (channel == null) {
+                    throw new SocketException("TCP服务端初始化连接失败");
+                }
+            } catch (Exception e) {
+                log.error("TCP服务端初始化连接异常", e);
+                throw new SocketException("TCP服务端初始化连接异常");
+            }
+        };
+    }
 
     public abstract SocketEncodeDto encode(Channel channel, byte[] data);
 
@@ -55,22 +122,6 @@ public abstract class AbstractSocketNioServer {
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
         log.info("客户端channelId：{}，已注销", ctx.channel().id());
     }
-
-    protected Long setUnknownWaitMsgTimeoutSeconds() {
-        return 5L;
-    }
-
-    private final Cache<ChannelId, Channel> unknownChannelCache = Caffeine.newBuilder()
-            .expireAfterWrite(setUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
-            .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
-                if (value != null) {
-                    if (!isClient(value)) {
-                        value.close();
-                        log.info("客户端channelId：{}，已关闭", value.id());
-                    }
-                }
-            })
-            .build();
 
     private void setUnknownChannelCache(Channel channel) {
         if (!isClient(channel)) {
@@ -114,28 +165,6 @@ public abstract class AbstractSocketNioServer {
         }
     }
 
-    public void shutdown() {
-        if (getIsInit()) {
-            synchronized (this) {
-                if (getIsInit()) {
-                    if (socketMsgHandler.shutdown()) {
-                        channel.close();
-                        //关闭主线程组
-                        bossGroup.shutdownGracefully();
-                        if (workGroup != null) {
-                            //关闭工作线程组
-                            workGroup.shutdownGracefully();
-                        }
-                        bootstrap = null;
-                        channel = null;
-                        socketMsgHandler = null;
-                    }
-                }
-            }
-        }
-        log.info("SocketNioServer已关闭");
-    }
-
     public void write(Channel socketChannel, byte[] data) {
         socketMsgHandler.write(socketChannel, data);
     }
@@ -155,62 +184,6 @@ public abstract class AbstractSocketNioServer {
     public boolean writeAck(Channel socketChannel, byte[] data) {
         return writeAck(socketChannel, data, 10);
     }
-
-    private final Runnable initRunnable = () -> {
-        SocketServerConfig config = setConfig();
-        try {
-            synchronized (this) {
-                if (!getIsInit()) {
-                    workGroup = new NioEventLoopGroup(config.getEventLoopThreadCount());
-                    bootstrap = new ServerBootstrap()
-                            .group(bossGroup, workGroup)
-                            .channel(NioServerSocketChannel.class)
-                            .childHandler(new ChannelInitializer<SocketChannel>() {
-                                @Override
-                                protected void initChannel(SocketChannel socketChannel) throws Exception {
-                                    socketChannel.pipeline()
-                                            .addLast(new ServerInHandler())
-                                            .addLast(new ServerOutHandler());
-                                }
-                            })
-                            .option(ChannelOption.SO_BACKLOG, 128)
-                            //首选直接内存
-                            .option(ChannelOption.ALLOCATOR, PreferredDirectByteBufAllocator.DEFAULT)
-                            //设置队列大小
-//                .option(ChannelOption.SO_BACKLOG, 1024)
-                            // 两小时内没有数据的通信时,TCP会自动发送一个活动探测数据报文
-                            .childOption(ChannelOption.TCP_NODELAY, true)
-                            .childOption(ChannelOption.SO_KEEPALIVE, true)
-                            .childOption(ChannelOption.SO_RCVBUF, 128 * 1024)
-                            .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
-                            //服务端低水位线设置为3M，高水位线设置为6M
-                            .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(3 * 1024 * 1024, 6 * 1024 * 1024));
-                    Integer port = config.getPort();
-                    ChannelFuture future = bootstrap.bind(port).sync();
-                    channel = future.channel();
-                    if (socketMsgHandler == null) {
-                        socketMsgHandler = new SocketMsgHandler(
-                                10
-                                , config.getMsgSizeLimit()
-                                , this::decode
-                                , this::encode
-                                , setDataConsumer()
-                                , config.getMaxHandlerDataThreadCount()
-                                , config.getSingleThreadDataConsumerCount()
-                        );
-                    }
-                    log.info("SocketNioServer已启动，开始监听端口: {}", port);
-                    this.notify();
-                }
-            }
-            if (channel == null) {
-                throw new SocketException("TCP服务端初始化连接失败");
-            }
-        } catch (Exception e) {
-            log.error("TCP服务端初始化连接异常", e);
-            throw new SocketException("TCP服务端初始化连接异常");
-        }
-    };
 
     public void initNioServerAsync() {
         if (!getIsInit()) {
@@ -237,6 +210,29 @@ public abstract class AbstractSocketNioServer {
                 throw new SocketException("TCP服务端同步初始化连接失败");
             }
         }
+    }
+
+    public void shutdown() {
+        if (getIsInit()) {
+            synchronized (this) {
+                if (getIsInit()) {
+                    if (socketMsgHandler.shutdown()) {
+                        channel.close();
+                        if (bootstrap != null) {
+                            ServerBootstrapConfig config = bootstrap.config();
+                            //关闭主线程组
+                            config.group().shutdownGracefully();
+                            //关闭工作线程组
+                            config.childGroup().shutdownGracefully();
+                        }
+                        bootstrap = null;
+                        channel = null;
+                        socketMsgHandler = null;
+                    }
+                }
+            }
+        }
+        log.info("SocketNioServer已关闭");
     }
 
 }
