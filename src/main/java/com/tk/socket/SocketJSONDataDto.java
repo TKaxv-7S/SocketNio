@@ -28,7 +28,7 @@ public class SocketJSONDataDto implements Serializable {
     /**
      * 数据
      */
-    private final JSONObject jsonData;
+    private JSONObject jsonData;
 
     public String getMethod() {
         return method;
@@ -52,6 +52,14 @@ public class SocketJSONDataDto implements Serializable {
 
     public void setServerDataId(Integer serverDataId) {
         this.serverDataId = serverDataId;
+    }
+
+    public JSONObject getJsonData() {
+        return jsonData;
+    }
+
+    public void setJsonData(JSONObject jsonData) {
+        this.jsonData = jsonData;
     }
 
     public void setData(Object data) {

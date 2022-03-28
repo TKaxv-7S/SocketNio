@@ -174,14 +174,14 @@ public class SocketClientCache<T extends SocketSecretDto> {
         return secretCacheMap.get(appKey);
     }
 
-    protected void addSecret(T socketSecret) {
+    public void addSecret(T socketSecret) {
         synchronized (secretCacheMap) {
             String appKey = socketSecret.getAppKey();
             secretCacheMap.put(appKey, socketSecret);
         }
     }
 
-    protected T delSecret(String appKey) {
+    public T delSecret(String appKey) {
         synchronized (secretCacheMap) {
             return secretCacheMap.remove(appKey);
         }

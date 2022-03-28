@@ -1,15 +1,19 @@
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
-import client.SocketNioClient;
+import client.SocketClientDataHandler;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.json.JSONObject;
-import com.tk.socket.SocketJSONDataDto;
+import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.client.SocketClientConfig;
+import com.tk.socket.client.SocketNioClient;
+import com.tk.socket.server.SocketClientCache;
+import com.tk.socket.server.SocketNioServer;
+import com.tk.socket.server.SocketSecretDto;
 import com.tk.socket.server.SocketServerConfig;
+import com.tk.utils.Base64SecretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
-import server.SocketChannelSecretUtil;
-import server.SocketNioServer;
+import server.SocketServerDataHandler;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -20,7 +24,6 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
-        SocketChannelSecretUtil.setSecret(appKey, secretBytes);
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
@@ -32,12 +35,25 @@ public class TestMain {
         socketServerConfig.setEventLoopThreadCount(10);
         socketServerConfig.setMaxHandlerDataThreadCount(200);
         socketServerConfig.setSingleThreadDataConsumerCount(100);
-        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig);
+        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig, new SocketServerDataHandler());
         socketNioServer.initNioServerSync();
+        SocketClientCache<SocketSecretDto> socketClientCache = (SocketClientCache<SocketSecretDto>) socketNioServer.getSocketClientCache();
+        socketClientCache.addSecret(SocketSecretDto.build(
+                appKey,
+                secretBytes,
+                Base64SecretUtil::encodeToByteArray,
+                Base64SecretUtil::decodeToByteArray,
+                2,
+                30,
+                35,
+                "AES"
+        ));
 
         SocketClientConfig socketClientConfig = new SocketClientConfig();
         socketClientConfig.setHost("127.0.0.1");
         socketClientConfig.setPort(serverPort);
+        socketClientConfig.setMsgEncode(Base64SecretUtil::encodeToByteArray);
+        socketClientConfig.setMsgDecode(Base64SecretUtil::decodeToByteArray);
         socketClientConfig.setMsgSizeLimit(null);
         socketClientConfig.setMaxHandlerDataThreadCount(10);
         socketClientConfig.setSingleThreadDataConsumerCount(100);
@@ -45,7 +61,7 @@ public class TestMain {
         socketClientConfig.setPoolMaxIdle(5);
         socketClientConfig.setPoolMinIdle(2);
         socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
-        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, secretBytes, appKey.getBytes(StandardCharsets.UTF_8));
+        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, secretBytes, appKey.getBytes(StandardCharsets.UTF_8), new SocketClientDataHandler());
         socketNioClient.initNioClientSync();
 
         Thread.sleep(1000);
@@ -66,7 +82,7 @@ public class TestMain {
 //                jsonObject.set("text", RandomUtil.randomString("你好啊", 900099));
                     jsonObject.set("test", "socket");
                     jsonObject.set("isOk", true);
-                    SocketJSONDataDto socketJSONDataDto = SocketJSONDataDto.build("reg", jsonObject);
+                    SocketMsgDataDto socketJSONDataDto = SocketMsgDataDto.build("reg", jsonObject);
                     log.debug("客户端第 {} 次普通写", count);
                     socketNioClient.write(socketJSONDataDto);
                     log.debug("客户端第 {} 次普通写完成", count);
