@@ -1,4 +1,4 @@
-package com.tk.socket;
+package com.tk.socket.server;
 
 import java.io.Serializable;
 

@@ -1,5 +1,6 @@
 package com.tk.socket;
 
+import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.json.JSONUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -18,8 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 
 @Slf4j
@@ -35,7 +35,9 @@ public class SocketMsgHandler {
 
     private final MsgEncode msgEncode;
 
-    private final SocketDataConsumerThreadPoolExecutor<ChannelHandlerContext, byte[]> socketDataConsumerThreadPoolExecutor;
+    private final ThreadPoolExecutor dataThreadPoolExecutor;
+
+    private final LinkedBlockingQueue<SocketDataConsumerDto<ChannelHandlerContext, byte[]>> dataQueue = new LinkedBlockingQueue<>();
 
     public SocketMsgHandler() {
         throw new SocketException("该类不可使用无参构造函数实例化");
@@ -54,7 +56,6 @@ public class SocketMsgHandler {
         this.msgSizeLimit = Optional.ofNullable(msgSizeLimit).orElse(4 * 1024 * 1024);
         this.msgDecode = msgDecode;
         this.msgEncode = msgEncode;
-        this.socketDataConsumerThreadPoolExecutor = new SocketDataConsumerThreadPoolExecutor<>(dataConsumer, maxDataThreadCount, singleThreadDataConsumerCount);
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> {
@@ -66,6 +67,85 @@ public class SocketMsgHandler {
                     }
                 })
                 .build();
+
+        dataThreadPoolExecutor = ThreadUtil.newExecutor(2, Math.min(maxDataThreadCount, 2));
+
+        Runnable dataRunnable = () -> {
+            if (dataConsumer != null) {
+                for (; ; ) {
+                    try {
+                        SocketDataConsumerDto<ChannelHandlerContext, byte[]> take = dataQueue.poll(15, TimeUnit.SECONDS);
+                        if (take != null) {
+                            dataConsumer.accept(take.getChannel(), take.getData());
+                        }
+                    } catch (InterruptedException e) {
+                        int size = dataQueue.size();
+                        if (size <= 0) {
+                            break;
+                        }
+                        log.warn("SocketMsgHandler数据处理主线程正在关闭，剩余未处理数据条数：{}", size);
+                    } catch (Exception e) {
+                        log.error("SocketMsgHandler数据处理异常", e);
+                    }
+                }
+                log.info("SocketMsgHandler数据处理主线程已关闭");
+            }
+        };
+        dataThreadPoolExecutor.execute(dataRunnable);
+
+        Runnable dataCountRunnable = () -> {
+            if (dataConsumer != null) {
+                int i = 0;
+                while (singleThreadDataConsumerCount > i) {
+                    try {
+                        //不阻塞
+                        SocketDataConsumerDto<ChannelHandlerContext, byte[]> data = dataQueue.poll(1, TimeUnit.SECONDS);
+                        if (data != null) {
+                            dataConsumer.accept(data.getChannel(), data.getData());
+                        }
+                    } catch (InterruptedException e) {
+                        break;
+                    } catch (Exception e) {
+                        log.error("数据处理异常", e);
+                    }
+                    i++;
+                }
+            }
+        };
+
+        dataThreadPoolExecutor.execute(() -> {
+            Thread thread = Thread.currentThread();
+            while (!thread.isInterrupted()) {
+                try {
+                    int activeThreadCount = dataThreadPoolExecutor.getActiveCount();
+                    int leftCanUseThreadCount = maxDataThreadCount - activeThreadCount;
+                    int dataSize = dataQueue.size();
+                    if (dataSize > singleThreadDataConsumerCount) {
+                        int newThreadCount = Math.min(dataSize / singleThreadDataConsumerCount, leftCanUseThreadCount) - activeThreadCount;
+                        if (newThreadCount > 0) {
+                            for (int i = 0; i < newThreadCount; i++) {
+                                this.dataThreadPoolExecutor.execute(dataCountRunnable);
+                            }
+                        }
+                    } else if (dataSize > 0 && activeThreadCount < 1) {
+                        this.dataThreadPoolExecutor.execute(dataCountRunnable);
+                    }
+                } catch (Exception e) {
+                    log.error("数据处理线程池动态调整分配异常", e);
+                }
+                try {
+                    Thread.sleep(60000);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+            log.info("数据处理线程池动态调整线程已关闭");
+        });
+    }
+
+    public void putData(ChannelHandlerContext channel, byte[] data) throws InterruptedException {
+        //如果队列已满，需阻塞
+        dataQueue.put(new SocketDataConsumerDto<>(channel, data));
     }
 
     public void readMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
@@ -198,7 +278,7 @@ public class SocketMsgHandler {
         boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
         if (length > 3) {
             log.debug("数据已接收，channelId：{}", channelId);
-            socketDataConsumerThreadPoolExecutor.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
+            putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
         } else {
             if (!isAckData) {
                 //接收ackBytes
@@ -302,22 +382,42 @@ public class SocketMsgHandler {
         readCacheMap.cleanUp();
     }
 
+    public boolean shutdown() {
+        try {
+            shutdownAndAwaitTermination(dataThreadPoolExecutor, 30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.error("socket消费线程池关闭失败，未处理数据条数：{}", dataQueue.size());
+            throw new SocketException(e, "socket消费线程池关闭异常");
+        }
+        cleanUpReadCacheMap();
+        ackDataMap.clear();
+        return true;
+    }
+
+    public static void shutdownAndAwaitTermination(ExecutorService pool, long timeout, TimeUnit unit) {
+        if (pool != null && !pool.isShutdown()) {
+            pool.shutdown();
+            try {
+                if (!pool.awaitTermination(timeout, unit)) {
+                    pool.shutdownNow();
+                    if (!pool.awaitTermination(timeout, unit)) {
+                        log.info("线程池暂时无法关闭");
+                    }
+                }
+            } catch (InterruptedException ie) {
+                pool.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
     @FunctionalInterface
-    interface MsgDecode {
+    public interface MsgDecode {
         byte[] decode(Channel channel, byte[] data, byte secretByte);
     }
 
     @FunctionalInterface
-    interface MsgEncode {
+    public interface MsgEncode {
         SocketEncodeDto encode(Channel channel, byte[] data);
-    }
-
-    public boolean shutdown() {
-        if (socketDataConsumerThreadPoolExecutor.shutdown()) {
-            cleanUpReadCacheMap();
-            ackDataMap.clear();
-            return true;
-        }
-        return false;
     }
 }

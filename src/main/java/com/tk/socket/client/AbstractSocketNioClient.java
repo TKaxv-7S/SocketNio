@@ -1,6 +1,7 @@
-package com.tk.socket;
+package com.tk.socket.client;
 
 import cn.hutool.core.thread.ThreadUtil;
+import com.tk.socket.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -32,6 +33,12 @@ public abstract class AbstractSocketNioClient {
     private final Runnable initRunnable;
 
     public final SocketClientConfig config;
+
+    protected SocketClientConfig getConfig() {
+        return config;
+    }
+
+    protected Consumer<AbstractSocketNioClient> connCallback;
 
     public AbstractSocketNioClient(SocketClientConfig config) {
         this.config = config;
@@ -75,8 +82,10 @@ public abstract class AbstractSocketNioClient {
                         }
 
                         channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
-
                         log.info("SocketNioClient已连接，地址：{}，端口: {}", host, port);
+                        if (connCallback != null) {
+                            connCallback.accept(this);
+                        }
                         lockObj.notify();
                     }
                 }
@@ -207,10 +216,10 @@ public abstract class AbstractSocketNioClient {
                         }
                         bootstrap = null;
                         socketMsgHandler = null;
+                        log.info("SocketNioClient已关闭");
                     }
                 }
             }
         }
-        log.info("SocketNioClient已关闭");
     }
 }

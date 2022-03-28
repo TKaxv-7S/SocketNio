@@ -1,11 +1,9 @@
 package com.tk.socket;
 
 import cn.hutool.json.JSONObject;
-import lombok.Data;
 
 import java.io.Serializable;
 
-@Data
 public class SocketJSONDataDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -30,7 +28,31 @@ public class SocketJSONDataDto implements Serializable {
     /**
      * 数据
      */
-    private JSONObject jsonData;
+    private final JSONObject jsonData;
+
+    public String getMethod() {
+        return method;
+    }
+
+    public void setMethod(String method) {
+        this.method = method;
+    }
+
+    public Integer getClientDataId() {
+        return clientDataId;
+    }
+
+    public void setClientDataId(Integer clientDataId) {
+        this.clientDataId = clientDataId;
+    }
+
+    public Integer getServerDataId() {
+        return serverDataId;
+    }
+
+    public void setServerDataId(Integer serverDataId) {
+        this.serverDataId = serverDataId;
+    }
 
     public void setData(Object data) {
         jsonData.set(JSON_DATA_KEY, data);

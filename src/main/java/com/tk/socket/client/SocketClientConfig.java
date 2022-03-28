@@ -1,5 +1,7 @@
-package com.tk.socket;
+package com.tk.socket.client;
 
+import com.tk.socket.SocketMsgDecode;
+import com.tk.socket.SocketMsgEncode;
 import io.netty.channel.Channel;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
@@ -18,6 +20,16 @@ public class SocketClientConfig implements Serializable {
     private Integer port;
 
     private Integer msgSizeLimit;
+
+    /**
+     * 加密方法
+     */
+    private SocketMsgEncode msgEncode;
+
+    /**
+     * 解密方法
+     */
+    private SocketMsgDecode msgDecode;
 
     private int bossLoopThreadCount;
 
@@ -55,6 +67,34 @@ public class SocketClientConfig implements Serializable {
 
     public void setMsgSizeLimit(Integer msgSizeLimit) {
         this.msgSizeLimit = msgSizeLimit;
+    }
+
+    public SocketMsgEncode getMsgEncode() {
+        if (msgEncode == null) {
+            msgEncode = (data, secret) -> data;
+        }
+        return msgEncode;
+    }
+
+    public void setMsgEncode(SocketMsgEncode msgEncode) {
+        if (msgEncode == null) {
+            msgEncode = (data, secret) -> data;
+        }
+        this.msgEncode = msgEncode;
+    }
+
+    public SocketMsgDecode getMsgDecode() {
+        if (msgDecode == null) {
+            msgDecode = (data, secret) -> data;
+        }
+        return msgDecode;
+    }
+
+    public void setMsgDecode(SocketMsgDecode msgDecode) {
+        if (msgDecode == null) {
+            msgDecode = (data, secret) -> data;
+        }
+        this.msgDecode = msgDecode;
     }
 
     public int getBossLoopThreadCount() {

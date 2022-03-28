@@ -2,7 +2,12 @@ package client;
 
 import cn.hutool.core.lang.TypeReference;
 import cn.hutool.json.JSONUtil;
-import com.tk.socket.*;
+import com.tk.socket.SocketEncodeDto;
+import com.tk.socket.SocketException;
+import com.tk.socket.SocketJSONDataDto;
+import com.tk.socket.SocketMessageUtil;
+import com.tk.socket.client.AbstractSocketNioClient;
+import com.tk.socket.client.SocketClientConfig;
 import com.tk.utils.Base64SecretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
