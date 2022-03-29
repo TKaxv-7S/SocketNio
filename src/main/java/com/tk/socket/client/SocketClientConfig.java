@@ -22,6 +22,15 @@ public class SocketClientConfig implements Serializable {
     private Integer msgSizeLimit;
 
     /**
+     * appKey
+     */
+    private String appKey;
+    /**
+     * 密文
+     */
+    private byte[] secret;
+
+    /**
      * 加密方法
      */
     private SocketMsgEncode msgEncode;
@@ -67,6 +76,22 @@ public class SocketClientConfig implements Serializable {
 
     public void setMsgSizeLimit(Integer msgSizeLimit) {
         this.msgSizeLimit = msgSizeLimit;
+    }
+
+    public String getAppKey() {
+        return appKey;
+    }
+
+    public void setAppKey(String appKey) {
+        this.appKey = appKey;
+    }
+
+    public byte[] getSecret() {
+        return secret;
+    }
+
+    public void setSecret(byte[] secret) {
+        this.secret = secret;
     }
 
     public SocketMsgEncode getMsgEncode() {

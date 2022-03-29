@@ -19,9 +19,9 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final SocketClientHandler socketClientHandler;
 
-    private final byte[] tcpServerSecret;
+    private final byte[] appKey;
 
-    private final byte[] tcpAppKey;
+    private final byte[] secret;
 
     private final Heartbeat heartbeat;
 
@@ -77,12 +77,12 @@ public class SocketNioClient extends AbstractSocketNioClient {
         }
     }
 
-    public SocketNioClient(SocketClientConfig config, byte[] tcpServerSecret, byte[] tcpAppKey, SocketClientHandler socketClientHandler) {
+    public SocketNioClient(SocketClientConfig config, SocketClientHandler socketClientHandler) {
         super(config);
         this.msgEncode = config.getMsgEncode();
         this.msgDecode = config.getMsgDecode();
-        this.tcpServerSecret = tcpServerSecret;
-        this.tcpAppKey = tcpAppKey;
+        this.appKey = config.getAppKey().getBytes(StandardCharsets.UTF_8);
+        this.secret = config.getSecret();
         this.socketClientHandler = socketClientHandler;
         this.heartbeat = new Heartbeat(null);
         super.connCallback = (client) -> heartbeat.start();
@@ -182,21 +182,21 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     @Override
     public SocketEncodeDto encode(byte[] data) {
-        byte[] encodeData = msgEncode.encode(data, tcpServerSecret);
+        byte[] encodeData = msgEncode.encode(data, secret);
         int dataLength = encodeData.length;
-        int appKeyLength = tcpAppKey.length;
+        int appKeyLength = appKey.length;
         byte[] lengthBytes = SocketMessageUtil.intToByteArray(appKeyLength);
         int index = 4 + appKeyLength;
         byte[] encode = new byte[dataLength + index];
         System.arraycopy(encodeData, 0, encode, index, dataLength);
         System.arraycopy(lengthBytes, 0, encode, 0, 4);
-        System.arraycopy(tcpAppKey, 0, encode, 4, appKeyLength);
+        System.arraycopy(appKey, 0, encode, 4, appKeyLength);
         return new SocketEncodeDto(encode, (byte) 0xFF);
     }
 
     @Override
     public byte[] decode(byte[] data, byte secretByte) {
-        return msgDecode.decode(data, tcpServerSecret);
+        return msgDecode.decode(data, secret);
     }
 
     @Override

@@ -52,6 +52,8 @@ public class TestMain {
         SocketClientConfig socketClientConfig = new SocketClientConfig();
         socketClientConfig.setHost("127.0.0.1");
         socketClientConfig.setPort(serverPort);
+        socketClientConfig.setAppKey(appKey);
+        socketClientConfig.setSecret(secretBytes);
         socketClientConfig.setMsgEncode(Base64SecretUtil::encodeToByteArray);
         socketClientConfig.setMsgDecode(Base64SecretUtil::decodeToByteArray);
         socketClientConfig.setMsgSizeLimit(null);
@@ -61,7 +63,7 @@ public class TestMain {
         socketClientConfig.setPoolMaxIdle(5);
         socketClientConfig.setPoolMinIdle(2);
         socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
-        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, secretBytes, appKey.getBytes(StandardCharsets.UTF_8), new SocketClientDataHandler());
+        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, new SocketClientDataHandler());
         socketNioClient.initNioClientSync();
 
         Thread.sleep(1000);
