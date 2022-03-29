@@ -49,6 +49,7 @@ public class SocketMsgDataDto extends SocketJSONDataDto implements Serializable 
 
     public SocketMsgDataDto(Integer dataId, boolean isClient) {
         super(dataId, isClient);
+        this.code = SUCCESS;
     }
 
     public <T> SocketMsgDataDto(String method, Integer dataId, T data, boolean isClient) {
