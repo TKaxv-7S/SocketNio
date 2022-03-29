@@ -55,11 +55,11 @@ public class SocketServerChannel implements Serializable {
         return socketNioServer.writeAck(data, channel, seconds);
     }
 
-    public Object writeSync(SocketMsgDataDto data) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
         return socketNioServer.writeSync(data, 10, channel);
     }
 
-    public Object writeSync(SocketMsgDataDto data, int seconds) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
         return socketNioServer.writeSync(data, seconds, channel);
     }
 

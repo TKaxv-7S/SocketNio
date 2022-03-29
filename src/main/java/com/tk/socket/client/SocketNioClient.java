@@ -109,11 +109,11 @@ public class SocketNioClient extends AbstractSocketNioClient {
         return writeAck(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
-    public Object writeSync(SocketMsgDataDto data) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
         return writeSync(data, 10);
     }
 
-    public Object writeSync(SocketMsgDataDto data, int seconds) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
         if (!getIsInit()) {
             initNioClientSync();
         }
@@ -134,7 +134,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
             if (!StringUtils.equals(method, "syncReturn")) {
                 throw new SocketException("写入超时");
             }
-            return socketDataDto.getData();
+            return socketDataDto;
         } catch (InterruptedException e) {
             log.error("同步写入异常", e);
             syncDataMap.remove(dataId);

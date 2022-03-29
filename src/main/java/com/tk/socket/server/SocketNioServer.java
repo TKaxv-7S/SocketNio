@@ -58,11 +58,11 @@ public class SocketNioServer extends AbstractSocketNioServer {
         return writeAck(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
-    public Object writeSync(SocketMsgDataDto data, Channel channel) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data, Channel channel) {
         return writeSync(data, 10, channel);
     }
 
-    public Object writeSync(SocketMsgDataDto data, int seconds, Channel channel) {
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds, Channel channel) {
         Integer dataId = data.getServerDataId();
         if (dataId == null) {
             dataId = ThreadLocalRandom.current().nextInt();
@@ -80,7 +80,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
             if (!StringUtils.equals(method, "syncReturn")) {
                 throw new SocketException("写入超时");
             }
-            return socketDataDto.getData();
+            return socketDataDto;
         } catch (InterruptedException e) {
             log.error("同步写入异常", e);
             syncDataMap.remove(dataId);

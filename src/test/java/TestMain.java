@@ -91,7 +91,7 @@ public class TestMain {
                     log.debug("客户端第 {} 次ACK写结果：{}", count, socketNioClient.writeAck(socketJSONDataDto));
                     jsonObject.set("isSync", true);
                     log.debug("客户端第 {} 次同步写", count);
-                    log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketJSONDataDto));
+                    log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketJSONDataDto).getData());
                     /*if (count % 2 == 1) {
                         this.close();
                     }*/
