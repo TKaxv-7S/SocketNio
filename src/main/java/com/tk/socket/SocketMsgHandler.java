@@ -31,6 +31,10 @@ public class SocketMsgHandler {
 
     private final Cache<ChannelId, SocketMsgDto<CompositeByteBuf>> readCacheMap;
 
+    private final Thread dataConsumerThread;
+
+    private final Thread dataConsumerAdjustThread;
+
     private final MsgDecode msgDecode;
 
     private final MsgEncode msgEncode;
@@ -68,16 +72,14 @@ public class SocketMsgHandler {
                 })
                 .build();
 
-        dataThreadPoolExecutor = ThreadUtil.newExecutor(2, Math.min(maxDataThreadCount, 2));
+        this.dataThreadPoolExecutor = ThreadUtil.newExecutor(0, Math.min(maxDataThreadCount, 1));
 
         Runnable dataRunnable = () -> {
             if (dataConsumer != null) {
                 for (; ; ) {
                     try {
-                        SocketDataConsumerDto<ChannelHandlerContext, byte[]> take = dataQueue.poll(15, TimeUnit.SECONDS);
-                        if (take != null) {
-                            dataConsumer.accept(take.getChannel(), take.getData());
-                        }
+                        SocketDataConsumerDto<ChannelHandlerContext, byte[]> take = dataQueue.take();
+                        dataConsumer.accept(take.getChannel(), take.getData());
                     } catch (InterruptedException e) {
                         int size = dataQueue.size();
                         if (size <= 0) {
@@ -91,7 +93,8 @@ public class SocketMsgHandler {
                 log.info("SocketMsgHandler数据处理主线程已关闭");
             }
         };
-        dataThreadPoolExecutor.execute(dataRunnable);
+        this.dataConsumerThread = new Thread(dataRunnable);
+        dataConsumerThread.start();
 
         Runnable dataCountRunnable = () -> {
             if (dataConsumer != null) {
@@ -104,7 +107,11 @@ public class SocketMsgHandler {
                             dataConsumer.accept(data.getChannel(), data.getData());
                         }
                     } catch (InterruptedException e) {
-                        break;
+                        int size = dataQueue.size();
+                        if (size <= 0) {
+                            break;
+                        }
+                        log.warn("SocketMsgHandler数据处理线程正在关闭，剩余未处理数据条数：{}", size);
                     } catch (Exception e) {
                         log.error("数据处理异常", e);
                     }
@@ -113,7 +120,7 @@ public class SocketMsgHandler {
             }
         };
 
-        dataThreadPoolExecutor.execute(() -> {
+        this.dataConsumerAdjustThread = new Thread(() -> {
             Thread thread = Thread.currentThread();
             while (!thread.isInterrupted()) {
                 try {
@@ -124,11 +131,11 @@ public class SocketMsgHandler {
                         int newThreadCount = Math.min(dataSize / singleThreadDataConsumerCount, leftCanUseThreadCount) - activeThreadCount;
                         if (newThreadCount > 0) {
                             for (int i = 0; i < newThreadCount; i++) {
-                                this.dataThreadPoolExecutor.execute(dataCountRunnable);
+                                dataThreadPoolExecutor.execute(dataCountRunnable);
                             }
                         }
                     } else if (dataSize > 0 && activeThreadCount < 1) {
-                        this.dataThreadPoolExecutor.execute(dataCountRunnable);
+                        dataThreadPoolExecutor.execute(dataCountRunnable);
                     }
                 } catch (Exception e) {
                     log.error("数据处理线程池动态调整分配异常", e);
@@ -141,6 +148,7 @@ public class SocketMsgHandler {
             }
             log.info("数据处理线程池动态调整线程已关闭");
         });
+        dataConsumerAdjustThread.start();
     }
 
     public void putData(ChannelHandlerContext channel, byte[] data) throws InterruptedException {
@@ -384,6 +392,8 @@ public class SocketMsgHandler {
 
     public boolean shutdown() {
         try {
+            dataConsumerThread.interrupt();
+            dataConsumerAdjustThread.interrupt();
             shutdownAndAwaitTermination(dataThreadPoolExecutor, 30, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.error("socket消费线程池关闭失败，未处理数据条数：{}", dataQueue.size());
@@ -398,7 +408,7 @@ public class SocketMsgHandler {
         if (pool != null && !pool.isShutdown()) {
             pool.shutdown();
             try {
-                if (!pool.awaitTermination(timeout, unit)) {
+                if (!pool.awaitTermination(3, TimeUnit.SECONDS)) {
                     pool.shutdownNow();
                     if (!pool.awaitTermination(timeout, unit)) {
                         log.info("线程池暂时无法关闭");
