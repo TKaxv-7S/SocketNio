@@ -77,7 +77,6 @@ public abstract class AbstractSocketNioClient {
                                     , (channelId, data) -> encode(data)
                                     , (channelHandlerContext, bytes) -> setDataConsumer().accept(bytes)
                                     , config.getMaxHandlerDataThreadCount()
-                                    , config.getSingleThreadDataConsumerCount()
                             );
                         }
 

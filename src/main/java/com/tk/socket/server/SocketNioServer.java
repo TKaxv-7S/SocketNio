@@ -73,7 +73,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
         try {
             synchronized (syncDataDto) {
                 write(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
-                syncDataDto.wait(Math.min(TimeUnit.SECONDS.toMillis(seconds), 10000));
+                syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
             String method = socketDataDto.getMethod();
@@ -116,6 +116,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
                     Integer clientDataId = socketDataDto.getClientDataId();
                     SocketMsgDataDto syncDataDto;
                     try {
+                        log.debug("客户端执行method：{}", method);
                         syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getClientChannel(channel));
                     } catch (Exception e) {
                         syncDataDto = SocketMsgDataDto.buildError(e.getMessage());

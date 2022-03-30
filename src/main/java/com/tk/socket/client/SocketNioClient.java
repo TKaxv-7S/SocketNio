@@ -169,6 +169,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
                     Integer serverDataId = socketDataDto.getServerDataId();
                     SocketMsgDataDto syncDataDto;
                     try {
+                        log.debug("服务端执行method：{}", method);
                         syncDataDto = socketClientHandler.handle(method, socketDataDto, this);
                     } catch (Exception e) {
                         syncDataDto = SocketMsgDataDto.buildError(e.getMessage());

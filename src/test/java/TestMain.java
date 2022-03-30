@@ -31,10 +31,8 @@ public class TestMain {
         SocketServerConfig socketServerConfig = new SocketServerConfig();
         socketServerConfig.setPort(serverPort);
         socketServerConfig.setMsgSizeLimit(null);
-        socketServerConfig.setSingleThreadDataConsumerCount(100);
         socketServerConfig.setEventLoopThreadCount(10);
-        socketServerConfig.setMaxHandlerDataThreadCount(200);
-        socketServerConfig.setSingleThreadDataConsumerCount(100);
+        socketServerConfig.setMaxHandlerDataThreadCount(4);
         SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig, new SocketServerDataHandler());
         socketNioServer.initNioServerSync();
         SocketClientCache<SocketSecretDto> socketClientCache = (SocketClientCache<SocketSecretDto>) socketNioServer.getSocketClientCache();
@@ -57,8 +55,7 @@ public class TestMain {
         socketClientConfig.setMsgEncode(Base64SecretUtil::encodeToByteArray);
         socketClientConfig.setMsgDecode(Base64SecretUtil::decodeToByteArray);
         socketClientConfig.setMsgSizeLimit(null);
-        socketClientConfig.setMaxHandlerDataThreadCount(10);
-        socketClientConfig.setSingleThreadDataConsumerCount(100);
+        socketClientConfig.setMaxHandlerDataThreadCount(4);
         socketClientConfig.setPoolMaxTotal(10);
         socketClientConfig.setPoolMaxIdle(5);
         socketClientConfig.setPoolMinIdle(2);

@@ -44,8 +44,6 @@ public class SocketClientConfig implements Serializable {
 
     private int maxHandlerDataThreadCount;
 
-    private int singleThreadDataConsumerCount;
-
     private Duration poolMaxWait = DEFAULT_MAX_WAIT;
 
     private int poolMaxTotal = DEFAULT_MAX_TOTAL;
@@ -136,14 +134,6 @@ public class SocketClientConfig implements Serializable {
 
     public void setMaxHandlerDataThreadCount(int maxHandlerDataThreadCount) {
         this.maxHandlerDataThreadCount = maxHandlerDataThreadCount;
-    }
-
-    public int getSingleThreadDataConsumerCount() {
-        return singleThreadDataConsumerCount;
-    }
-
-    public void setSingleThreadDataConsumerCount(int singleThreadDataConsumerCount) {
-        this.singleThreadDataConsumerCount = singleThreadDataConsumerCount;
     }
 
     public Duration getPoolMaxWait() {

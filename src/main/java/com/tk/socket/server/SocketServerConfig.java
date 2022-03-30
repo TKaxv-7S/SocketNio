@@ -16,8 +16,6 @@ public class SocketServerConfig implements Serializable {
 
     private int maxHandlerDataThreadCount;
 
-    private int singleThreadDataConsumerCount;
-
     private Long unknownWaitMsgTimeoutSeconds;
 
     public Integer getPort() {
@@ -58,14 +56,6 @@ public class SocketServerConfig implements Serializable {
 
     public void setMaxHandlerDataThreadCount(int maxHandlerDataThreadCount) {
         this.maxHandlerDataThreadCount = maxHandlerDataThreadCount;
-    }
-
-    public int getSingleThreadDataConsumerCount() {
-        return singleThreadDataConsumerCount;
-    }
-
-    public void setSingleThreadDataConsumerCount(int singleThreadDataConsumerCount) {
-        this.singleThreadDataConsumerCount = singleThreadDataConsumerCount;
     }
 
     public Long getUnknownWaitMsgTimeoutSeconds() {

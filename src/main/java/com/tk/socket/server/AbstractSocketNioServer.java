@@ -91,7 +91,6 @@ public abstract class AbstractSocketNioServer {
                                     , this::encode
                                     , setDataConsumer()
                                     , config.getMaxHandlerDataThreadCount()
-                                    , config.getSingleThreadDataConsumerCount()
                             );
                         }
                         log.info("SocketNioServer已启动，开始监听端口: {}", port);
