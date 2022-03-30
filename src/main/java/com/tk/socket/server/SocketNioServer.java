@@ -113,8 +113,13 @@ public class SocketNioServer extends AbstractSocketNioServer {
             if (StringUtils.isNotBlank(method)) {
                 if (socketDataDto.isSuccess()) {
                     Channel channel = ctx.channel();
-                    SocketMsgDataDto syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getClientChannel(channel));
                     Integer clientDataId = socketDataDto.getClientDataId();
+                    SocketMsgDataDto syncDataDto;
+                    try {
+                        syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getClientChannel(channel));
+                    } catch (Exception e) {
+                        syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
+                    }
                     if (clientDataId != null) {
                         syncDataDto.setClientDataId(clientDataId);
                         write(syncDataDto, channel);
@@ -179,5 +184,11 @@ public class SocketNioServer extends AbstractSocketNioServer {
             }
         }
         throw new SocketException("客户端未配置");
+    }
+
+    @Override
+    protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
+        socketClientCache.delClientChannel(ctx.channel());
+        super.channelUnregisteredEvent(ctx);
     }
 }

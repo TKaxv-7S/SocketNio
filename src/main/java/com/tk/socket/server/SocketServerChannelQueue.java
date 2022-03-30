@@ -71,15 +71,16 @@ public class SocketServerChannelQueue {
 
     public Boolean add(SocketServerChannel socketServerChannel) {
         synchronized (this) {
-            if (map.size() < maxSize) {
-                if (socketServerChannel.getChannel().isActive()) {
-                    ChannelId channelId = socketServerChannel.getChannelId();
-                    if (!map.containsKey(channelId)) {
-                        map.put(channelId, socketServerChannel);
-                        queue.add(channelId);
-                    }
-                    return true;
+            if (map.size() >= maxSize) {
+                clear();
+            }
+            if (socketServerChannel.getChannel().isActive()) {
+                ChannelId channelId = socketServerChannel.getChannelId();
+                if (!map.containsKey(channelId)) {
+                    map.put(channelId, socketServerChannel);
+                    queue.add(channelId);
                 }
+                return true;
             }
             return false;
         }
