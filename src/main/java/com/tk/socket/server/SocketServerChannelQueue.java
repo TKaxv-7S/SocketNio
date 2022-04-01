@@ -3,9 +3,7 @@ package com.tk.socket.server;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -150,5 +148,17 @@ public class SocketServerChannelQueue {
 
     public boolean isEmpty() {
         return map.size() <= 0;
+    }
+
+    public Set<ChannelId> keySet() {
+        return map.keySet();
+    }
+
+    public Collection<SocketServerChannel> values() {
+        return map.values();
+    }
+
+    public Set<Map.Entry<ChannelId, SocketServerChannel>> entrySet() {
+        return map.entrySet();
     }
 }
