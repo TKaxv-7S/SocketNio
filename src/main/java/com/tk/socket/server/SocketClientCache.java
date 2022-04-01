@@ -98,8 +98,26 @@ public class SocketClientCache<T extends SocketSecretDto> {
         String appKey = getAppKey(channel);
         if (appKey != null) {
             SocketServerChannelQueue serverChannelQueue = clientCache.getIfPresent(appKey);
-            if (serverChannelQueue != null) {
+            if (serverChannelQueue == null) {
+                return;
+            }
+            synchronized (clientCache) {
                 serverChannelQueue.del(channel.id());
+                if (serverChannelQueue.isEmpty()) {
+                    clientCache.invalidate(appKey);
+                }
+            }
+        }
+    }
+
+    public void delClientChannels(String appKey) {
+        if (appKey != null) {
+            SocketServerChannelQueue serverChannelQueue = clientCache.getIfPresent(appKey);
+            if (serverChannelQueue == null) {
+                return;
+            }
+            synchronized (clientCache) {
+                clientCache.invalidate(appKey);
             }
         }
     }

@@ -144,7 +144,11 @@ public class SocketServerChannelQueue {
         }
     }
 
-    public Integer size() {
+    public int size() {
         return map.size();
+    }
+
+    public boolean isEmpty() {
+        return map.size() <= 0;
     }
 }
