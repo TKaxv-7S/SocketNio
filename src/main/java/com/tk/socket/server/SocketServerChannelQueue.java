@@ -70,7 +70,20 @@ public class SocketServerChannelQueue {
     public Boolean add(SocketServerChannel socketServerChannel) {
         synchronized (this) {
             if (map.size() >= maxSize) {
-                clear();
+                Iterator<SocketServerChannel> iterator = map.values().iterator();
+                while (iterator.hasNext()) {
+                    SocketServerChannel clientChannel = iterator.next();
+                    Channel channel = clientChannel.getChannel();
+                    if (!channel.isActive()) {
+                        ChannelId channelId = clientChannel.getChannelId();
+                        channel.close();
+                        iterator.remove();
+                        queue.remove(channelId);
+                    }
+                }
+                if (map.size() >= maxSize) {
+                    return false;
+                }
             }
             if (socketServerChannel.getChannel().isActive()) {
                 ChannelId channelId = socketServerChannel.getChannelId();
@@ -93,6 +106,13 @@ public class SocketServerChannelQueue {
             SocketServerChannel socketServerChannel = null;
             while (socketServerChannel == null) {
                 socketServerChannel = map.get(channelId);
+                if (socketServerChannel == null) {
+                    channelId = queue.poll();
+                    if (channelId == null) {
+                        return null;
+                    }
+                    continue;
+                }
                 Channel channel = socketServerChannel.getChannel();
                 if (!channel.isActive()) {
                     channel.close();

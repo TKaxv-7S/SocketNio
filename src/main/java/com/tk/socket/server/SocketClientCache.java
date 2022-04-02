@@ -110,7 +110,7 @@ public class SocketClientCache<T extends SocketSecretDto> {
         }
     }
 
-    public void delClient(String appKey) {
+    public void delClientChannels(String appKey) {
         if (appKey != null) {
             SocketServerChannelQueue serverChannelQueue = clientCache.getIfPresent(appKey);
             if (serverChannelQueue == null) {
