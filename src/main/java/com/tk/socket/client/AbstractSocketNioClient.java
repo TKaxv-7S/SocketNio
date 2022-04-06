@@ -203,11 +203,11 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
-    public void shutdown() {
+    public void shutdownNow() {
         if (getIsInit()) {
             synchronized (lockObj) {
                 if (getIsInit()) {
-                    if (socketMsgHandler.shutdown()) {
+                    if (socketMsgHandler.shutdownNow()) {
                         channelPool.close();
                         if (bootstrap != null) {
                             //关闭线程组

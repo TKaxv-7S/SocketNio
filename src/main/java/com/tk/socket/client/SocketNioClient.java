@@ -206,8 +206,8 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public void shutdown() {
-        super.shutdown();
+    public void shutdownNow() {
+        super.shutdownNow();
         heartbeat.interrupt();
     }
 }

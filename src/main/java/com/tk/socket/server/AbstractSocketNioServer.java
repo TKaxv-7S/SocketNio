@@ -214,11 +214,11 @@ public abstract class AbstractSocketNioServer {
         }
     }
 
-    public void shutdown() {
+    public void shutdownNow() {
         if (getIsInit()) {
             synchronized (this) {
                 if (getIsInit()) {
-                    if (socketMsgHandler.shutdown()) {
+                    if (socketMsgHandler.shutdownNow()) {
                         channel.close();
                         if (bootstrap != null) {
                             ServerBootstrapConfig config = bootstrap.config();

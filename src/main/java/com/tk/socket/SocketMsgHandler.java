@@ -313,7 +313,7 @@ public class SocketMsgHandler {
         readCacheMap.cleanUp();
     }
 
-    public boolean shutdown() {
+    public boolean shutdownNow() {
         try {
             shutdownAndAwaitTermination(dataConsumerThreadPoolExecutor, 30, TimeUnit.SECONDS);
         } catch (Exception e) {
