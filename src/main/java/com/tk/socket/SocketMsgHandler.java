@@ -85,7 +85,7 @@ public class SocketMsgHandler {
         try {
             parsingMsg(ctx, msg);
         } catch (Exception e) {
-            log.error("数据解析异常", e);
+            log.error("数据解析异常：{}", e.getMessage());
             //丢弃数据并关闭连接
             log.debug("msg.refCnt：{}", msg.refCnt());
             socketChannel.close();
@@ -120,7 +120,7 @@ public class SocketMsgHandler {
             //5+2+3+1
             if (msgSize < 11) {
                 //丢弃并关闭连接
-                throw new SocketException("报文格式错误");
+                throw new SocketException("非法报文");
             }
             compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
             compositeByteBuf.addComponent(true, headMsg);
@@ -149,7 +149,7 @@ public class SocketMsgHandler {
                 msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
                     //丢弃并关闭连接
-                    throw new SocketException("报文格式错误");
+                    throw new SocketException("非法报文");
                 }
                 compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer(msgSize);
                 compositeByteBuf.addComponent(true, headMsg);
@@ -317,7 +317,7 @@ public class SocketMsgHandler {
         try {
             shutdownAndAwaitTermination(dataConsumerThreadPoolExecutor, 30, TimeUnit.SECONDS);
         } catch (Exception e) {
-            log.error("socket消费线程池关闭失败", e);
+            log.error("socket消费线程池关闭失败");
             throw new SocketException(e, "socket消费线程池关闭异常");
         }
         cleanUpReadCacheMap();
