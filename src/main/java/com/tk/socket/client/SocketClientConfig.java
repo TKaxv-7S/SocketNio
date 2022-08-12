@@ -2,6 +2,7 @@ package com.tk.socket.client;
 
 import com.tk.socket.SocketMsgDecode;
 import com.tk.socket.SocketMsgEncode;
+import com.tk.socket.entity.SocketSecret;
 import io.netty.channel.Channel;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
@@ -25,20 +26,11 @@ public class SocketClientConfig implements Serializable {
      * appKey
      */
     private String appKey;
-    /**
-     * 密文
-     */
-    private byte[] secret;
 
     /**
-     * 加密方法
+     * 加密类
      */
-    private SocketMsgEncode msgEncode;
-
-    /**
-     * 解密方法
-     */
-    private SocketMsgDecode msgDecode;
+    private SocketSecret secret;
 
     private int bossLoopThreadCount;
 
@@ -84,40 +76,12 @@ public class SocketClientConfig implements Serializable {
         this.appKey = appKey;
     }
 
-    public byte[] getSecret() {
+    public SocketSecret getSecret() {
         return secret;
     }
 
-    public void setSecret(byte[] secret) {
+    public void setSecret(SocketSecret secret) {
         this.secret = secret;
-    }
-
-    public SocketMsgEncode getMsgEncode() {
-        if (msgEncode == null) {
-            msgEncode = (data, secret) -> data;
-        }
-        return msgEncode;
-    }
-
-    public void setMsgEncode(SocketMsgEncode msgEncode) {
-        if (msgEncode == null) {
-            msgEncode = (data, secret) -> data;
-        }
-        this.msgEncode = msgEncode;
-    }
-
-    public SocketMsgDecode getMsgDecode() {
-        if (msgDecode == null) {
-            msgDecode = (data, secret) -> data;
-        }
-        return msgDecode;
-    }
-
-    public void setMsgDecode(SocketMsgDecode msgDecode) {
-        if (msgDecode == null) {
-            msgDecode = (data, secret) -> data;
-        }
-        this.msgDecode = msgDecode;
     }
 
     public int getBossLoopThreadCount() {

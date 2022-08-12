@@ -142,54 +142,6 @@ public class SocketClientCache<T extends SocketSecretDto> {
         channel.attr(appKeyAttr).set(null);
     }
 
-    public byte[] getSecretBytes(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey != null) {
-            return getSecretBytes(appKey);
-        }
-        return null;
-    }
-
-    public byte[] getSecretBytes(String appKey) {
-        T socketSecretDto = secretCacheMap.get(appKey);
-        if (socketSecretDto != null) {
-            return socketSecretDto.getSecret();
-        }
-        return null;
-    }
-
-    public SocketMsgEncode getMsgEncode(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey != null) {
-            return getMsgEncode(appKey);
-        }
-        return null;
-    }
-
-    public SocketMsgEncode getMsgEncode(String appKey) {
-        T socketSecretDto = secretCacheMap.get(appKey);
-        if (socketSecretDto != null) {
-            return socketSecretDto.getMsgEncode();
-        }
-        return null;
-    }
-
-    public SocketMsgDecode getMsgDecode(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey != null) {
-            return getMsgDecode(appKey);
-        }
-        return null;
-    }
-
-    public SocketMsgDecode getMsgDecode(String appKey) {
-        T socketSecretDto = secretCacheMap.get(appKey);
-        if (socketSecretDto != null) {
-            return socketSecretDto.getMsgDecode();
-        }
-        return null;
-    }
-
     public T getSecret(Channel channel) {
         String appKey = getAppKey(channel);
         if (appKey != null) {

@@ -4,18 +4,17 @@ import client.SocketClientDataHandler;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.client.SocketClientConfig;
 import com.tk.socket.client.SocketNioClient;
+import com.tk.socket.entity.SocketSecret;
 import com.tk.socket.server.SocketClientCache;
 import com.tk.socket.server.SocketNioServer;
 import com.tk.socket.server.SocketSecretDto;
 import com.tk.socket.server.SocketServerConfig;
-import com.tk.utils.SecuretUtil;
+import com.tk.utils.SecretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketServerDataHandler;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
@@ -31,8 +30,9 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
-        Cipher aesEncryptCipher = SecuretUtil.getAESEncryptCipher(secretBytes);
-        Cipher aesDecryptCipher = SecuretUtil.getAESDecryptCipher(secretBytes);
+        Cipher aesEncryptCipher = SecretUtil.getAESEncryptCipher(secretBytes);
+        Cipher aesDecryptCipher = SecretUtil.getAESDecryptCipher(secretBytes);
+        SocketSecret socketSecret = new SocketSecret(aesEncryptCipher, aesDecryptCipher);
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
@@ -47,21 +47,7 @@ public class TestMain {
         SocketClientCache<SocketSecretDto> socketClientCache = (SocketClientCache<SocketSecretDto>) socketNioServer.getSocketClientCache();
         socketClientCache.addSecret(SocketSecretDto.build(
                 appKey,
-                secretBytes,
-                (byte[] data, byte[] secret) -> {
-                    try {
-                        return aesEncryptCipher.doFinal(data);
-                    } catch (IllegalBlockSizeException | BadPaddingException e) {
-                        throw new RuntimeException(e);
-                    }
-                },
-                (byte[] data, byte[] secret) -> {
-                    try {
-                        return aesDecryptCipher.doFinal(data);
-                    } catch (IllegalBlockSizeException | BadPaddingException e) {
-                        throw new RuntimeException(e);
-                    }
-                },
+                socketSecret,
                 2,
                 30,
                 35,
@@ -72,21 +58,7 @@ public class TestMain {
         socketClientConfig.setHost("127.0.0.1");
         socketClientConfig.setPort(serverPort);
         socketClientConfig.setAppKey(appKey);
-        socketClientConfig.setSecret(secretBytes);
-        socketClientConfig.setMsgEncode((byte[] data, byte[] secret) -> {
-            try {
-                return aesEncryptCipher.doFinal(data);
-            } catch (IllegalBlockSizeException | BadPaddingException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        socketClientConfig.setMsgDecode((byte[] data, byte[] secret) -> {
-            try {
-                return aesDecryptCipher.doFinal(data);
-            } catch (IllegalBlockSizeException | BadPaddingException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        socketClientConfig.setSecret(socketSecret);
         socketClientConfig.setMsgSizeLimit(null);
         socketClientConfig.setMaxHandlerDataThreadCount(4);
         socketClientConfig.setPoolMaxTotal(10);

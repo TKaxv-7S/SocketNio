@@ -2,6 +2,7 @@ package com.tk.socket.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.tk.socket.*;
+import com.tk.socket.entity.SocketSecret;
 import com.tk.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -21,15 +22,11 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final byte[] appKey;
 
-    private final byte[] secret;
+    private final SocketSecret secret;
 
     private final Heartbeat heartbeat;
 
     private final byte[] heartbeatBytes = JsonUtil.toJsonString(SocketMsgDataDto.build("", null)).getBytes(StandardCharsets.UTF_8);
-
-    private final SocketMsgEncode msgEncode;
-
-    private final SocketMsgDecode msgDecode;
 
     public void setHeartbeatInterval(Integer heartbeatInterval) {
         heartbeat.setHeartbeatInterval(heartbeatInterval);
@@ -79,8 +76,6 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     public SocketNioClient(SocketClientConfig config, SocketClientHandler socketClientHandler) {
         super(config);
-        this.msgEncode = config.getMsgEncode();
-        this.msgDecode = config.getMsgDecode();
         this.appKey = config.getAppKey().getBytes(StandardCharsets.UTF_8);
         this.secret = config.getSecret();
         this.socketClientHandler = socketClientHandler;
@@ -190,7 +185,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     @Override
     public SocketEncodeDto encode(byte[] data) {
-        byte[] encodeData = msgEncode.encode(data, secret);
+        byte[] encodeData = secret.encode(data);
         int dataLength = encodeData.length;
         int appKeyLength = appKey.length;
         byte[] lengthBytes = SocketMessageUtil.intToByteArray(appKeyLength);
@@ -204,7 +199,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     @Override
     public byte[] decode(byte[] data, byte secretByte) {
-        return msgDecode.decode(data, secret);
+        return secret.decode(data);
     }
 
     @Override
