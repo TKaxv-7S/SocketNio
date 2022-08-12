@@ -1,14 +1,15 @@
 package com.tk.socket;
 
-import cn.hutool.json.JSONObject;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
+import com.tk.socket.entity.Node;
+import com.tk.utils.JsonUtil;
 
 import java.io.Serializable;
 
 public class SocketJSONDataDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    public static final String JSON_DATA_KEY = "data";
 
     /**
      * 调用方法
@@ -28,7 +29,7 @@ public class SocketJSONDataDto implements Serializable {
     /**
      * 数据
      */
-    private JSONObject jsonData;
+    private Node<Object> nodeData = new Node<>();
 
     public String getMethod() {
         return method;
@@ -54,33 +55,51 @@ public class SocketJSONDataDto implements Serializable {
         this.serverDataId = serverDataId;
     }
 
-    public JSONObject getJsonData() {
-        return jsonData;
+    public Node<Object> getNodeData() {
+        return nodeData;
     }
 
-    public void setJsonData(JSONObject jsonData) {
-        this.jsonData = jsonData;
+    public void setJsonData(Node<Object> nodeData) {
+        this.nodeData = nodeData;
     }
 
     public void setData(Object data) {
-        jsonData.set(JSON_DATA_KEY, data);
+        nodeData.setNode(data);
     }
 
     public Object getData() {
-        return jsonData.get(JSON_DATA_KEY);
+        return nodeData.getNode();
     }
 
-    public <T> T getData(Class<T> tClass) {
-        return jsonData.get(JSON_DATA_KEY, tClass);
+    public <T> T getData(JavaType javaType) {
+        Object node = nodeData.getNode();
+        if (node == null) {
+            return null;
+        }
+        return JsonUtil.parseObject(node, javaType);
+    }
+
+    public <T> T getData(TypeReference<T> valueTypeRef) {
+        Object node = nodeData.getNode();
+        if (node == null) {
+            return null;
+        }
+        return JsonUtil.parseObject(node, valueTypeRef);
+    }
+
+    public <T> T getData(Class<T> clazz) {
+        Object node = nodeData.getNode();
+        if (node == null) {
+            return null;
+        }
+        return JsonUtil.parseObject(node, clazz);
     }
 
     public SocketJSONDataDto() {
-        jsonData = new JSONObject();
     }
 
     public SocketJSONDataDto(String method) {
         this.method = method;
-        jsonData = new JSONObject();
     }
 
     public SocketJSONDataDto(Integer dataId, boolean isClient) {
@@ -89,12 +108,10 @@ public class SocketJSONDataDto implements Serializable {
         } else {
             this.serverDataId = dataId;
         }
-        jsonData = new JSONObject();
     }
 
     public SocketJSONDataDto(Object data) {
-        jsonData = new JSONObject();
-        jsonData.set(JSON_DATA_KEY, data);
+        nodeData.setNode(data);
     }
 
     public SocketJSONDataDto(Integer dataId, Object data, boolean isClient) {
@@ -103,8 +120,7 @@ public class SocketJSONDataDto implements Serializable {
         } else {
             this.serverDataId = dataId;
         }
-        jsonData = new JSONObject();
-        jsonData.set(JSON_DATA_KEY, data);
+        nodeData.setNode(data);
     }
 
     public SocketJSONDataDto(String method, Integer dataId, boolean isClient) {
@@ -114,13 +130,11 @@ public class SocketJSONDataDto implements Serializable {
         } else {
             this.serverDataId = dataId;
         }
-        jsonData = new JSONObject();
     }
 
     public SocketJSONDataDto(String method, Object data) {
         this.method = method;
-        jsonData = new JSONObject();
-        jsonData.set(JSON_DATA_KEY, data);
+        nodeData.setNode(data);
     }
 
     public SocketJSONDataDto(String method, Integer dataId, Object data, boolean isClient) {
@@ -130,8 +144,7 @@ public class SocketJSONDataDto implements Serializable {
         } else {
             this.serverDataId = dataId;
         }
-        jsonData = new JSONObject();
-        jsonData.set(JSON_DATA_KEY, data);
+        nodeData.setNode(data);
     }
 
     public static SocketJSONDataDto build(String method, Object data) {

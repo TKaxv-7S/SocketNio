@@ -1,6 +1,5 @@
 package com.tk.socket;
 
-import cn.hutool.json.JSON;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
@@ -34,11 +33,6 @@ public class SocketMsgDataDto extends SocketJSONDataDto implements Serializable 
 
     public <T> SocketMsgDataDto(T data) {
         super(data);
-        this.code = SUCCESS;
-    }
-
-    public SocketMsgDataDto(String method, JSON data) {
-        super(method, data);
         this.code = SUCCESS;
     }
 

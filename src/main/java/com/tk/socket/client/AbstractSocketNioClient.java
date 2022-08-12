@@ -1,7 +1,9 @@
 package com.tk.socket.client;
 
-import cn.hutool.core.thread.ThreadUtil;
-import com.tk.socket.*;
+import com.tk.socket.SocketEncodeDto;
+import com.tk.socket.SocketException;
+import com.tk.socket.SocketMsgHandler;
+import com.tk.socket.SocketNioChannelPool;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -12,6 +14,8 @@ import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -30,6 +34,8 @@ public abstract class AbstractSocketNioClient {
 
     private SocketMsgHandler socketMsgHandler;
 
+    private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
+
     private final Runnable initRunnable;
 
     public final SocketClientConfig config;
@@ -47,7 +53,7 @@ public abstract class AbstractSocketNioClient {
                 synchronized (lockObj) {
                     if (!getIsInit()) {
                         bootstrap = new Bootstrap()
-                                .group(new NioEventLoopGroup(config.getBossLoopThreadCount()))
+                                .group(new NioEventLoopGroup(Math.max(config.getBossLoopThreadCount(), 2)))
                                 .channel(NioSocketChannel.class)
                                 .handler(new ChannelInitializer<SocketChannel>() {
                                     @Override
@@ -178,7 +184,7 @@ public abstract class AbstractSocketNioClient {
 
     public synchronized void initNioClientAsync() {
         if (!getIsInit()) {
-            ThreadUtil.execute(initRunnable);
+            singleThreadExecutor.execute(initRunnable);
         }
     }
 
@@ -189,7 +195,7 @@ public abstract class AbstractSocketNioClient {
     public synchronized void initNioClientSync(int seconds) {
         if (!getIsInit()) {
             synchronized (lockObj) {
-                ThreadUtil.execute(initRunnable);
+                singleThreadExecutor.execute(initRunnable);
                 try {
                     lockObj.wait(TimeUnit.SECONDS.toMillis(seconds));
                 } catch (InterruptedException e) {

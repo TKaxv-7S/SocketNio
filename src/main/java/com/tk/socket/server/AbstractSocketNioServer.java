@@ -1,6 +1,5 @@
 package com.tk.socket.server;
 
-import cn.hutool.core.thread.ThreadUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
@@ -18,6 +17,8 @@ import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
@@ -33,6 +34,8 @@ public abstract class AbstractSocketNioServer {
     }
 
     private SocketMsgHandler socketMsgHandler;
+
+    private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
     private final Runnable initRunnable;
 
@@ -58,7 +61,7 @@ public abstract class AbstractSocketNioServer {
                 synchronized (this) {
                     if (!getIsInit()) {
                         bootstrap = new ServerBootstrap()
-                                .group(new NioEventLoopGroup(config.getBossLoopThreadCount()), new NioEventLoopGroup(config.getEventLoopThreadCount()))
+                                .group(new NioEventLoopGroup((Math.max(config.getBossLoopThreadCount(), 2))), new NioEventLoopGroup(config.getEventLoopThreadCount()))
                                 .channel(NioServerSocketChannel.class)
                                 .childHandler(new ChannelInitializer<SocketChannel>() {
                                     @Override
@@ -189,7 +192,7 @@ public abstract class AbstractSocketNioServer {
 
     public void initNioServerAsync() {
         if (!getIsInit()) {
-            ThreadUtil.execute(initRunnable);
+            singleThreadExecutor.execute(initRunnable);
         }
     }
 
@@ -200,7 +203,7 @@ public abstract class AbstractSocketNioServer {
     public void initNioServerSync(int seconds) {
         if (!getIsInit()) {
             synchronized (this) {
-                ThreadUtil.execute(initRunnable);
+                singleThreadExecutor.execute(initRunnable);
                 try {
                     this.wait(TimeUnit.SECONDS.toMillis(seconds));
                 } catch (InterruptedException e) {

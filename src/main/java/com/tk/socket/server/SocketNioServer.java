@@ -1,11 +1,11 @@
 package com.tk.socket.server;
 
-import cn.hutool.core.lang.TypeReference;
-import cn.hutool.json.JSONUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.tk.socket.SocketEncodeDto;
 import com.tk.socket.SocketException;
 import com.tk.socket.SocketMessageUtil;
 import com.tk.socket.SocketMsgDataDto;
+import com.tk.utils.JsonUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
@@ -47,15 +47,15 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {
-        write(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+        write(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
     }
 
     public boolean writeAck(SocketMsgDataDto data, Channel channel) {
-        return writeAck(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+        return writeAck(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
     }
 
     public boolean writeAck(SocketMsgDataDto data, Channel channel, int seconds) {
-        return writeAck(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
+        return writeAck(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data, Channel channel) {
@@ -72,7 +72,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(channel, JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+                write(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -102,6 +102,8 @@ public class SocketNioServer extends AbstractSocketNioServer {
                 if (syncDataDto != null) {
                     synchronized (syncDataDto) {
                         syncDataDto.setData(socketDataDto.getData());
+                        syncDataDto.setCode(socketDataDto.getCode());
+                        syncDataDto.setMsg(socketDataDto.getMsg());
                         syncDataDto.setMethod("syncReturn");
                         syncDataDto.notify();
                     }
@@ -126,7 +128,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
                         write(syncDataDto, channel);
                     }
                 } else {
-                    log.error("客户端处理失败：{}", JSONUtil.toJsonStr(socketDataDto));
+                    log.error("客户端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
                 }
             } else {
                 //客户端心跳
@@ -141,7 +143,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     public SocketMsgDataDto readSocketDataDto(byte[] data) {
-        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
+        return JsonUtil.parseObject(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference);
     }
 
     @Override

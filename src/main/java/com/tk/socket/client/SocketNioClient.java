@@ -1,8 +1,8 @@
 package com.tk.socket.client;
 
-import cn.hutool.core.lang.TypeReference;
-import cn.hutool.json.JSONUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.tk.socket.*;
+import com.tk.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -25,7 +25,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final Heartbeat heartbeat;
 
-    private final byte[] heartbeatBytes = JSONUtil.toJsonStr(SocketMsgDataDto.build("", null)).getBytes(StandardCharsets.UTF_8);
+    private final byte[] heartbeatBytes = JsonUtil.toJsonString(SocketMsgDataDto.build("", null)).getBytes(StandardCharsets.UTF_8);
 
     private final SocketMsgEncode msgEncode;
 
@@ -94,19 +94,19 @@ public class SocketNioClient extends AbstractSocketNioClient {
     };
 
     public SocketMsgDataDto readSocketDataDto(byte[] data) {
-        return JSONUtil.toBean(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference, true);
+        return JsonUtil.parseObject(new String(data, StandardCharsets.UTF_8), socketDataDtoTypeReference);
     }
 
     public void write(SocketJSONDataDto data) {
-        write(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+        write(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
     }
 
     public boolean writeAck(SocketJSONDataDto data) {
-        return writeAck(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+        return writeAck(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
     }
 
     public boolean writeAck(SocketJSONDataDto data, int seconds) {
-        return writeAck(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8), seconds);
+        return writeAck(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8), seconds);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
@@ -126,7 +126,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(JSONUtil.toJsonStr(data).getBytes(StandardCharsets.UTF_8));
+                write(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -156,6 +156,8 @@ public class SocketNioClient extends AbstractSocketNioClient {
                 if (syncDataDto != null) {
                     synchronized (syncDataDto) {
                         syncDataDto.setData(socketDataDto.getData());
+                        syncDataDto.setCode(socketDataDto.getCode());
+                        syncDataDto.setMsg(socketDataDto.getMsg());
                         syncDataDto.setMethod("syncReturn");
                         syncDataDto.notify();
                     }
@@ -179,7 +181,7 @@ public class SocketNioClient extends AbstractSocketNioClient {
                         write(syncDataDto);
                     }
                 } else {
-                    log.error("服务端处理失败：{}", JSONUtil.toJsonStr(socketDataDto));
+                    log.error("服务端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
                 }
             }
             log.debug("客户端已读");

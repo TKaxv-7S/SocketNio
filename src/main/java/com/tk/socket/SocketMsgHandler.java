@@ -1,10 +1,9 @@
 package com.tk.socket;
 
-import cn.hutool.core.thread.ExecutorBuilder;
-import cn.hutool.json.JSONUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.tk.utils.JsonUtil;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
@@ -70,7 +69,7 @@ public class SocketMsgHandler {
 
         int corePoolSize = Runtime.getRuntime().availableProcessors();
         int maxPoolSize = Math.max(maxDataThreadCount, corePoolSize);
-        this.dataConsumerThreadPoolExecutor = ExecutorBuilder.create().setCorePoolSize(corePoolSize).setMaxPoolSize(maxPoolSize).setWorkQueue(new LinkedBlockingQueue<>()).build();
+        this.dataConsumerThreadPoolExecutor = new ThreadPoolExecutor(corePoolSize, maxPoolSize, TimeUnit.SECONDS.toNanos(60), TimeUnit.NANOSECONDS, new LinkedBlockingQueue<>());
 
     }
 
@@ -260,7 +259,7 @@ public class SocketMsgHandler {
             ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), (byte[]) msg))), promise);
         } else {
             //传输其他类型数据时暂不支持ACK，需使用byte[]
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), SocketMessageUtil.packageData(JSONUtil.toJsonStr(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
         }
         log.debug("数据已发送，channelId：{}", ctx.channel().id());
     }

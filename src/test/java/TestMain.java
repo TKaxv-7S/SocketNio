@@ -1,8 +1,6 @@
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import client.SocketClientDataHandler;
-import cn.hutool.core.thread.ThreadUtil;
-import cn.hutool.json.JSONObject;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.client.SocketClientConfig;
 import com.tk.socket.client.SocketNioClient;
@@ -10,20 +8,31 @@ import com.tk.socket.server.SocketClientCache;
 import com.tk.socket.server.SocketNioServer;
 import com.tk.socket.server.SocketSecretDto;
 import com.tk.socket.server.SocketServerConfig;
-import com.tk.utils.Base64SecretUtil;
+import com.tk.utils.SecuretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketServerDataHandler;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executors;
 
 @Slf4j
 public class TestMain {
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
+        Cipher aesEncryptCipher = SecuretUtil.getAESEncryptCipher(secretBytes);
+        Cipher aesDecryptCipher = SecuretUtil.getAESDecryptCipher(secretBytes);
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
@@ -39,8 +48,20 @@ public class TestMain {
         socketClientCache.addSecret(SocketSecretDto.build(
                 appKey,
                 secretBytes,
-                Base64SecretUtil::encodeToByteArray,
-                Base64SecretUtil::decodeToByteArray,
+                (byte[] data, byte[] secret) -> {
+                    try {
+                        return aesEncryptCipher.doFinal(data);
+                    } catch (IllegalBlockSizeException | BadPaddingException e) {
+                        throw new RuntimeException(e);
+                    }
+                },
+                (byte[] data, byte[] secret) -> {
+                    try {
+                        return aesDecryptCipher.doFinal(data);
+                    } catch (IllegalBlockSizeException | BadPaddingException e) {
+                        throw new RuntimeException(e);
+                    }
+                },
                 2,
                 30,
                 35,
@@ -52,8 +73,20 @@ public class TestMain {
         socketClientConfig.setPort(serverPort);
         socketClientConfig.setAppKey(appKey);
         socketClientConfig.setSecret(secretBytes);
-        socketClientConfig.setMsgEncode(Base64SecretUtil::encodeToByteArray);
-        socketClientConfig.setMsgDecode(Base64SecretUtil::decodeToByteArray);
+        socketClientConfig.setMsgEncode((byte[] data, byte[] secret) -> {
+            try {
+                return aesEncryptCipher.doFinal(data);
+            } catch (IllegalBlockSizeException | BadPaddingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        socketClientConfig.setMsgDecode((byte[] data, byte[] secret) -> {
+            try {
+                return aesDecryptCipher.doFinal(data);
+            } catch (IllegalBlockSizeException | BadPaddingException e) {
+                throw new RuntimeException(e);
+            }
+        });
         socketClientConfig.setMsgSizeLimit(null);
         socketClientConfig.setMaxHandlerDataThreadCount(4);
         socketClientConfig.setPoolMaxTotal(10);
@@ -70,25 +103,25 @@ public class TestMain {
 //        logger.setLevel(Level.ERROR);
         logger.setLevel(Level.DEBUG);
 
-        ThreadUtil.execute(() -> {
+        Executors.newCachedThreadPool().execute(() -> {
             int cycleCount = 200;
             int count = 0;
             long startTime = System.currentTimeMillis();
             while (count < cycleCount) {
                 count++;
                 try {
-                    JSONObject jsonObject = new JSONObject();
+                    Map<String, Object> map = new HashMap<>();
 //                jsonObject.set("text", RandomUtil.randomString("你好啊", 900099));
-                    jsonObject.set("test", "socket");
-                    jsonObject.set("isOk", true);
-                    SocketMsgDataDto socketJSONDataDto = SocketMsgDataDto.build("reg", jsonObject);
+                    map.put("test", "socket");
+                    map.put("isOk", true);
+                    SocketMsgDataDto socketJSONDataDto = SocketMsgDataDto.build("reg", map);
                     log.debug("客户端第 {} 次普通写", count);
                     socketNioClient.write(socketJSONDataDto);
                     log.debug("客户端第 {} 次普通写完成", count);
-                    jsonObject.set("isAck", true);
+                    map.put("isAck", true);
                     log.debug("客户端第 {} 次ACK写", count);
                     log.debug("客户端第 {} 次ACK写结果：{}", count, socketNioClient.writeAck(socketJSONDataDto));
-                    jsonObject.set("isSync", true);
+                    map.put("isSync", true);
                     log.debug("客户端第 {} 次同步写", count);
                     log.debug("客户端第 {} 次同步写结果：{}", count, socketNioClient.writeSync(socketJSONDataDto).getData());
                     /*if (count % 2 == 1) {
@@ -101,8 +134,8 @@ public class TestMain {
             }
             log.debug("客户端 {} 次循环测试完成", count);
             log.debug("耗时：{}毫秒", System.currentTimeMillis() - startTime);
-            socketNioClient.shutdown();
-            socketNioServer.shutdown();
+            socketNioClient.shutdownNow();
+            socketNioServer.shutdownNow();
             System.exit(0);
         });
     }
