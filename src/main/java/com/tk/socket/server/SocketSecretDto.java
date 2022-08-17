@@ -31,10 +31,6 @@ public class SocketSecretDto implements Serializable {
      * 心跳超时时间，默认180（单位：秒）
      */
     private final Integer heartbeatTimeout;
-    /**
-     * 加密方式
-     */
-    private final String signMethod;
 
     public String getAppKey() {
         return appKey;
@@ -56,10 +52,6 @@ public class SocketSecretDto implements Serializable {
         return heartbeatTimeout;
     }
 
-    public String getSignMethod() {
-        return signMethod;
-    }
-
     public byte[] encode(byte[] data) {
         return secret.encode(data);
     }
@@ -68,16 +60,15 @@ public class SocketSecretDto implements Serializable {
         return secret.decode(data);
     }
 
-    public SocketSecretDto(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout, String signMethod) {
+    public SocketSecretDto(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
         this.appKey = appKey;
         this.secret = secret;
         this.maxConnection = maxConnection;
         this.heartbeatInterval = heartbeatInterval;
         this.heartbeatTimeout = heartbeatTimeout;
-        this.signMethod = signMethod;
     }
 
-    public static SocketSecretDto build(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout, String signMethod) {
-        return new SocketSecretDto(appKey, secret, maxConnection, heartbeatInterval, heartbeatTimeout, signMethod);
+    public static SocketSecretDto build(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
+        return new SocketSecretDto(appKey, secret, maxConnection, heartbeatInterval, heartbeatTimeout);
     }
 }

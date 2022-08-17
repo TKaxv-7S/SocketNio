@@ -2,35 +2,41 @@ package com.tk.socket.entity;
 
 import com.tk.socket.SocketException;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-
 public class SocketSecret {
 
-    private final Cipher encryptCipher;
+    private final Encrypt encode;
 
-    private final Cipher decryptCipher;
+    private final Decrypt decode;
 
-    public SocketSecret(Cipher encryptCipher, Cipher decryptCipher) {
-        this.encryptCipher = encryptCipher;
-        this.decryptCipher = decryptCipher;
+    public SocketSecret(Encrypt encode, Decrypt decode) {
+        this.encode = encode;
+        this.decode = decode;
     }
 
     public byte[] encode(byte[] data) {
         try {
-            return encryptCipher.doFinal(data);
-        } catch (IllegalBlockSizeException | BadPaddingException e) {
+            return encode.encode(data);
+        } catch (Exception e) {
             throw new SocketException(e, e.getMessage());
         }
     }
 
     public byte[] decode(byte[] data) {
         try {
-            return decryptCipher.doFinal(data);
-        } catch (IllegalBlockSizeException | BadPaddingException e) {
+            return decode.decode(data);
+        } catch (Exception e) {
             throw new SocketException(e, e.getMessage());
         }
+    }
+
+    @FunctionalInterface
+    public interface Encrypt {
+        byte[] encode(byte[] data) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface Decrypt {
+        byte[] decode(byte[] data) throws Exception;
     }
 
 }

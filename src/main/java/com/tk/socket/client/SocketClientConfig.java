@@ -1,7 +1,5 @@
 package com.tk.socket.client;
 
-import com.tk.socket.SocketMsgDecode;
-import com.tk.socket.SocketMsgEncode;
 import com.tk.socket.entity.SocketSecret;
 import io.netty.channel.Channel;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;

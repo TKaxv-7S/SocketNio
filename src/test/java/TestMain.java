@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketServerDataHandler;
 
-import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
@@ -30,9 +29,9 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
-        Cipher aesEncryptCipher = SecretUtil.getAESEncryptCipher(secretBytes);
-        Cipher aesDecryptCipher = SecretUtil.getAESDecryptCipher(secretBytes);
-        SocketSecret socketSecret = new SocketSecret(aesEncryptCipher, aesDecryptCipher);
+        SocketSecret.Encrypt encode = SecretUtil.getAESEncryptCipher(secretBytes)::doFinal;
+        SocketSecret.Decrypt decode = SecretUtil.getAESDecryptCipher(secretBytes)::doFinal;
+        SocketSecret socketSecret = new SocketSecret(encode, decode);
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
@@ -50,8 +49,7 @@ public class TestMain {
                 socketSecret,
                 2,
                 30,
-                35,
-                "AES"
+                35
         ));
 
         SocketClientConfig socketClientConfig = new SocketClientConfig();
