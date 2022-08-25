@@ -113,8 +113,7 @@ public class SocketMsgHandler {
                 readCacheMap.put(channelId, new SocketMsgDto<>(null, compositeByteBuf));
                 return;
             }
-            ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-            msg.readerIndex(msg.readerIndex() + 5);
+            ByteBuf headMsg = msg.readRetainedSlice(5);
             msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
             //5+2+3+1
             if (msgSize < 11) {
@@ -143,8 +142,7 @@ public class SocketMsgHandler {
                         return;
                     }
                 }
-                ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-                msg.readerIndex(msg.readerIndex() + 5);
+                ByteBuf headMsg = msg.readRetainedSlice(5);
                 msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
                     //丢弃并关闭连接
