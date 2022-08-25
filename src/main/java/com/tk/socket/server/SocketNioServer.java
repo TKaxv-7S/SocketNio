@@ -13,6 +13,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -34,16 +35,10 @@ public class SocketNioServer extends AbstractSocketNioServer {
         return socketClientCache;
     }
 
-    public SocketNioServer(SocketServerConfig config, SocketServerHandler socketServerHandler) {
+    public SocketNioServer(SocketServerConfig config) {
         super(config);
-        this.socketServerHandler = socketServerHandler;
-        this.socketClientCache = new SocketClientCache<>();
-    }
-
-    public SocketNioServer(SocketServerConfig config, SocketServerHandler socketServerHandler, SocketClientCache<? extends SocketSecretDto> socketClientCache) {
-        super(config);
-        this.socketServerHandler = socketServerHandler;
-        this.socketClientCache = socketClientCache;
+        this.socketServerHandler = config.getSocketServerHandler();
+        this.socketClientCache = Optional.of(config.getSocketClientCache()).orElse(new SocketClientCache<>());
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {

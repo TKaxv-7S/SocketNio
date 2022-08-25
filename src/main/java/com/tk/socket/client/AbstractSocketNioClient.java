@@ -1,11 +1,13 @@
 package com.tk.socket.client;
 
-import com.tk.socket.SocketEncodeDto;
 import com.tk.socket.SocketException;
+import com.tk.socket.SocketMessageUtil;
 import com.tk.socket.SocketMsgHandler;
 import com.tk.socket.SocketNioChannelPool;
+import com.tk.utils.JsonUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -14,6 +16,7 @@ import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -38,15 +41,15 @@ public abstract class AbstractSocketNioClient {
 
     private final Runnable initRunnable;
 
-    public final SocketClientConfig config;
+    public final AbstractSocketClientConfig config;
 
-    protected SocketClientConfig getConfig() {
+    protected AbstractSocketClientConfig getConfig() {
         return config;
     }
 
     protected Consumer<AbstractSocketNioClient> connCallback;
 
-    public AbstractSocketNioClient(SocketClientConfig config) {
+    public AbstractSocketNioClient(AbstractSocketClientConfig config) {
         this.config = config;
         this.initRunnable = () -> {
             try {
@@ -104,7 +107,7 @@ public abstract class AbstractSocketNioClient {
         };
     }
 
-    public abstract SocketEncodeDto encode(byte[] data);
+    public abstract ByteBuf encode(Channel channel, byte[] data);
 
     public abstract byte[] decode(byte[] data, byte secretByte);
 
@@ -150,8 +153,19 @@ public abstract class AbstractSocketNioClient {
     class ClientOutHandler extends ChannelOutboundHandlerAdapter {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            socketMsgHandler.handlerWrite(ctx, msg, promise);
+            handlerWrite(ctx, msg, promise);
         }
+    }
+
+    private void handlerWrite(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        if (msg instanceof byte[]) {
+            encode()
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(encode(ctx.channel(), (byte[]) msg))), promise);
+        } else {
+            //传输其他类型数据时暂不支持ACK，需使用byte[]
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(encode(ctx.channel(), SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
+        }
+        log.debug("数据已发送，channelId：{}", ctx.channel().id());
     }
 
     public void write(byte[] data) {

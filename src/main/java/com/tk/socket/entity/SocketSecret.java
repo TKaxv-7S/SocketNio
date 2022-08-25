@@ -6,7 +6,15 @@ public class SocketSecret {
 
     private final Encrypt encode;
 
+    public Encrypt getEncode() {
+        return encode;
+    }
+
     private final Decrypt decode;
+
+    public Decrypt getDecode() {
+        return decode;
+    }
 
     public SocketSecret(Encrypt encode, Decrypt decode) {
         this.encode = encode;

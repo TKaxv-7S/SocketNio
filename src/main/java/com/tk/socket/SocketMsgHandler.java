@@ -30,10 +30,6 @@ public class SocketMsgHandler {
 
     private final Cache<ChannelId, SocketMsgDto<CompositeByteBuf>> readCacheMap;
 
-    private final MsgDecode msgDecode;
-
-    private final MsgEncode msgEncode;
-
     private final BiConsumer<ChannelHandlerContext, byte[]> dataConsumer;
 
     private final ThreadPoolExecutor dataConsumerThreadPoolExecutor;
@@ -45,20 +41,16 @@ public class SocketMsgHandler {
     public SocketMsgHandler(
             Integer msgExpireSeconds
             , Integer msgSizeLimit
-            , MsgDecode msgDecode
-            , MsgEncode msgEncode
             , BiConsumer<ChannelHandlerContext, byte[]> dataConsumer
             , int maxDataThreadCount
     ) {
         msgExpireSeconds = Optional.ofNullable(msgExpireSeconds).orElse(10);
         this.msgSizeLimit = Optional.ofNullable(msgSizeLimit).orElse(4 * 1024 * 1024);
-        this.msgDecode = msgDecode;
-        this.msgEncode = msgEncode;
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto<CompositeByteBuf> value, RemovalCause removalCause) -> {
                     if (value != null) {
-                        CompositeByteBuf msg = value.getMsg();
+                        CompositeByteBuf msg = value.getFullMsg();
                         while (msg.refCnt() > 0) {
                             ReferenceCountUtil.release(msg);
                         }
@@ -103,18 +95,17 @@ public class SocketMsgHandler {
         int readableBytes;
         Integer msgSize;
         int writeIndex;
-        SocketMsgDto<CompositeByteBuf> socketMsgDto = readCacheMap.getIfPresent(channelId);
+        SocketMsgDto socketMsgDto = readCacheMap.getIfPresent(channelId);
         if (socketMsgDto == null) {
             readableBytes = msg.readableBytes();
             if (readableBytes < 5) {
                 compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer();
                 //数据不足，继续等待
                 compositeByteBuf.addComponent(true, msg);
-                readCacheMap.put(channelId, new SocketMsgDto<>(null, compositeByteBuf));
+                readCacheMap.put(channelId, new SocketMsgDto(null, compositeByteBuf));
                 return;
             }
-            ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-            msg.readerIndex(msg.readerIndex() + 5);
+            ByteBuf headMsg = msg.readRetainedSlice(5);
             msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
             //5+2+3+1
             if (msgSize < 11) {
@@ -125,9 +116,9 @@ public class SocketMsgHandler {
             compositeByteBuf.addComponent(true, headMsg);
             compositeByteBuf.readerIndex(5);
             writeIndex = compositeByteBuf.writerIndex();
-            readCacheMap.put(channelId, new SocketMsgDto<>(msgSize, compositeByteBuf));
+            readCacheMap.put(channelId, new SocketMsgDto(msgSize, compositeByteBuf));
         } else {
-            compositeByteBuf = socketMsgDto.getMsg();
+            compositeByteBuf = socketMsgDto.getFullMsg();
             msgSize = socketMsgDto.getSize();
             if (msgSize == null) {
                 //补全数据
@@ -137,14 +128,13 @@ public class SocketMsgHandler {
                     if (writerIndex + readableBytes < 4) {
                         //数据不足，继续等待
                         compositeByteBuf.addComponent(true, msg);
-                        socketMsgDto.setMsg(compositeByteBuf);
+                        socketMsgDto.setFullMsg(compositeByteBuf);
                         //刷新
                         //readCacheMap.put(channelId, socketMsgDto);
                         return;
                     }
                 }
-                ByteBuf headMsg = msg.retainedSlice(msg.readerIndex(), 5);
-                msg.readerIndex(msg.readerIndex() + 5);
+                ByteBuf headMsg = msg.readRetainedSlice(5);
                 msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
                 if (msgSize < 11) {
                     //丢弃并关闭连接
