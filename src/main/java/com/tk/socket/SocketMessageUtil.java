@@ -77,12 +77,12 @@ public class SocketMessageUtil {
     }
 
     public static Byte checkMsgTail(ByteBuf msg, int msgSize) {
-        //报文尾2字节，验证是否为 msgSize首字节 + 数据中间字节
+        //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
         if (msg.getByte(msgSize - 3) == msg.getByte(1) && msg.getByte(msgSize - 2) == msg.getByte(msgSize / 2)) {
             //返回加密类型字节
             return msg.getByte(msgSize - 1);
         }
-        return null;
+        throw new SocketException("报文尾部验证失败");
     }
 
     public static byte[] packageData(byte[] data, boolean isAck) {

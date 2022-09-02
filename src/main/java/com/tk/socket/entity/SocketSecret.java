@@ -1,6 +1,7 @@
 package com.tk.socket.entity;
 
 import com.tk.socket.SocketException;
+import io.netty.buffer.ByteBuf;
 
 public class SocketSecret {
 
@@ -21,12 +22,20 @@ public class SocketSecret {
         this.decode = decode;
     }
 
+    public byte[] encode(ByteBuf byteBuf) {
+        return encode(byteBuf.array());
+    }
+
     public byte[] encode(byte[] data) {
         try {
             return encode.encode(data);
         } catch (Exception e) {
             throw new SocketException(e, e.getMessage());
         }
+    }
+
+    public byte[] decode(ByteBuf byteBuf) {
+        return decode(byteBuf.array());
     }
 
     public byte[] decode(byte[] data) {
