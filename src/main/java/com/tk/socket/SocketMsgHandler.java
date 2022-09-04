@@ -82,9 +82,10 @@ public class SocketMsgHandler {
             socketMsgDto = new SocketMsgDto(msgSizeLimit);
         }
         try {
-            socketMsgDto.parsingMsg(msg);
-            while (socketMsgDto != null) {
-                Byte secretByte = SocketMessageUtil.checkMsgTail(full, size);
+            SocketMsgDto prevSocketMsgDto;
+            do {
+                socketMsgDto.parsingMsg(msg);
+                Byte secretByte = socketMsgDto.getSecretByte();
                 //读取完成，写入队列
                 byte[] decodeBytes;
                 try {
@@ -144,7 +145,15 @@ public class SocketMsgHandler {
                         log.error("ack编码错误", e);
                     }
                 }
+                prevSocketMsgDto = socketMsgDto;
                 socketMsgDto = socketMsgDto.getNext();
+            } while (socketMsgDto != null);
+            if (prevSocketMsgDto.isDone()) {
+                //正常丢弃
+                CompositeByteBuf full = prevSocketMsgDto.getFull();
+                while (full.refCnt() > 0) {
+                    ReferenceCountUtil.release(full);
+                }
             }
         } catch (Exception e) {
             log.error("数据解析异常：{}", e.getMessage());

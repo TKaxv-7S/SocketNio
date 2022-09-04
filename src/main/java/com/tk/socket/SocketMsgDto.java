@@ -18,8 +18,14 @@ public class SocketMsgDto implements Serializable {
     //身部
     private ByteBuf body;
 
-    //尾部，3字节
-    private ByteBuf tail;
+    //验证字节，1字节
+    private Byte verifyByte0;
+
+    //验证字节，1字节
+    private Byte verifyByte1;
+
+    //加密字节，1字节
+    private Byte secretByte;
 
     //全部
     private final CompositeByteBuf full;
@@ -28,6 +34,9 @@ public class SocketMsgDto implements Serializable {
     private Integer size;
 
     private final Integer sizeLimit;
+
+    //isFinal
+    private Boolean isDone;
 
     private SocketMsgDto next;
 
@@ -45,6 +54,10 @@ public class SocketMsgDto implements Serializable {
         this.size = size;
         this.full = full;
         this.sizeLimit = sizeLimit;
+    }
+
+    public Boolean isDone() {
+        return isDone;
     }
 
     private synchronized SocketMsgDto buildNext() {
@@ -121,13 +134,23 @@ public class SocketMsgDto implements Serializable {
             //丢弃并关闭连接
             throw new SocketException("报文数据异常");
         }
-        Byte secretByte = SocketMessageUtil.checkMsgTail(full, size);
-
-        //正常丢弃
-        readCacheMap.invalidate(channelId);
+        checkMsgTail(full, size);
+        isDone = true;
         if (stickMsg != null) {
             SocketMsgDto next = buildNext();
             next.parsingMsg(stickMsg);
+            return false;
+        }
+        return true;
+    }
+
+    private void checkMsgTail(ByteBuf msg, int msgSize) {
+        //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
+        verifyByte0 = msg.getByte(size - 3);
+        verifyByte1 = msg.getByte(size - 2);
+        secretByte = msg.getByte(size - 1);
+        if (verifyByte0 != msg.getByte(1) || verifyByte1 != msg.getByte(msgSize / 2)) {
+            throw new SocketException("报文尾部验证失败");
         }
     }
 }
