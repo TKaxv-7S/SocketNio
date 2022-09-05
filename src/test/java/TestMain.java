@@ -41,7 +41,8 @@ public class TestMain {
         socketServerConfig.setMsgSizeLimit(null);
         socketServerConfig.setEventLoopThreadCount(10);
         socketServerConfig.setMaxHandlerDataThreadCount(4);
-        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig, new SocketServerDataHandler());
+        socketServerConfig.setSocketServerHandler(new SocketServerDataHandler());
+        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig);
         socketNioServer.initNioServerSync();
         SocketClientCache<SocketSecretDto> socketClientCache = (SocketClientCache<SocketSecretDto>) socketNioServer.getSocketClientCache();
         socketClientCache.addSecret(SocketSecretDto.build(

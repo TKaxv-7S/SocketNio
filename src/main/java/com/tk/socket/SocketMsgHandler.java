@@ -3,21 +3,13 @@ package com.tk.socket;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
-import com.tk.utils.JsonUtil;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
-import io.netty.channel.ChannelPromise;
-import io.netty.util.Attribute;
-import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.*;
@@ -25,8 +17,6 @@ import java.util.function.BiConsumer;
 
 @Slf4j
 public class SocketMsgHandler {
-
-    private final Integer msgSizeLimit;
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
@@ -42,12 +32,10 @@ public class SocketMsgHandler {
 
     public SocketMsgHandler(
             Integer msgExpireSeconds
-            , Integer msgSizeLimit
             , BiConsumer<ChannelHandlerContext, byte[]> dataConsumer
             , int maxDataThreadCount
     ) {
         msgExpireSeconds = Optional.ofNullable(msgExpireSeconds).orElse(10);
-        this.msgSizeLimit = Optional.ofNullable(msgSizeLimit).orElse(4 * 1024 * 1024);
         this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
@@ -70,257 +58,6 @@ public class SocketMsgHandler {
     public void putData(ChannelHandlerContext channel, byte[] data) throws InterruptedException {
         //如果队列已满，需阻塞
         dataConsumerThreadPoolExecutor.execute(() -> dataConsumer.accept(channel, data));
-    }
-
-    public void readMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
-        Channel socketChannel = ctx.channel();
-        ChannelId channelId = socketChannel.id();
-        AttributeKey<SocketMsgDto> attributeKey = AttributeKey.valueOf("msg");
-        Attribute<SocketMsgDto> socketMsgDtoAttribute = socketChannel.attr(attributeKey);
-        SocketMsgDto socketMsgDto = socketMsgDtoAttribute.get();
-        if (socketMsgDto == null) {
-            socketMsgDto = new SocketMsgDto(msgSizeLimit);
-        }
-        try {
-            SocketMsgDto prevSocketMsgDto;
-            do {
-                socketMsgDto.parsingMsg(msg);
-                Byte secretByte = socketMsgDto.getSecretByte();
-                //读取完成，写入队列
-                byte[] decodeBytes;
-                try {
-                    body = msg.readSlice(size - 8);
-//            byte[] bytes = new byte[size - 8];
-//            full.readBytes(bytes);
-                    /*if (log.isDebugEnabled()) {
-                        log.debug("byteBuf完成 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
-                        log.debug("msg完成 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
-                    }*/
-                    decodeBytes = msgDecode.decode(ctx.channel(), socketMsgDto.getBody().array(), secretByte);
-                } catch (Exception e) {
-                    log.debug("解码错误", e);
-                    //丢弃并关闭连接
-                    throw new SocketException("报文解码错误");
-                }
-                int length = decodeBytes.length;
-                boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
-                if (length > 3) {
-                    log.debug("数据已接收，channelId：{}", channelId);
-                    putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
-                } else {
-                    if (!isAckData) {
-                        //接收ackBytes
-                        byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                        int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
-                        String key = Integer.toString(ackKey).concat(channelId.asShortText());
-                        SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
-                        if (socketAckThreadDto != null) {
-                            synchronized (socketAckThreadDto) {
-                                socketAckThreadDto.setIsAck(true);
-                                socketAckThreadDto.notify();
-                            }
-//                            LockSupport.unpark(socketAckThreadDto.getThread());
-                            log.debug("接收ack字节：{}，已完成", ackBytes);
-                            readCacheMap.invalidate(channelId);
-                            return;
-                        } else {
-                            log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
-                        }
-                    } else {
-                        //关闭连接
-                        throw new SocketException("报文数据异常");
-                    }
-                    //丢弃
-                    readCacheMap.invalidate(channelId);
-                    return;
-                }
-                if (isAckData) {
-                    byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                    try {
-                        socketChannel.writeAndFlush(ackBytes);
-                        log.debug("发送ack字节：{}", ackBytes);
-                        readCacheMap.invalidate(channelId);
-                        return;
-                    } catch (Exception e) {
-                        log.error("ack编码错误", e);
-                    }
-                }
-                prevSocketMsgDto = socketMsgDto;
-                socketMsgDto = socketMsgDto.getNext();
-            } while (socketMsgDto != null);
-            if (prevSocketMsgDto.isDone()) {
-                //正常丢弃
-                CompositeByteBuf full = prevSocketMsgDto.getFull();
-                while (full.refCnt() > 0) {
-                    ReferenceCountUtil.release(full);
-                }
-            }
-        } catch (Exception e) {
-            log.error("数据解析异常：{}", e.getMessage());
-            //丢弃数据并关闭连接
-            log.debug("msg.refCnt：{}", msg.refCnt());
-            socketChannel.close();
-            //异常才释放
-            readCacheMap.invalidate(channelId);
-            while (msg.refCnt() > 0) {
-                ReferenceCountUtil.release(msg);
-            }
-        }
-    }
-
-    public void parsingMsg(ChannelHandlerContext ctx, ByteBuf msg) throws InterruptedException {
-        Channel socketChannel = ctx.channel();
-        ChannelId channelId = socketChannel.id();
-        CompositeByteBuf compositeByteBuf;
-        int readableBytes;
-        Integer msgSize;
-        int writeIndex;
-        SocketMsgDto socketMsgDto = readCacheMap.getIfPresent(channelId);
-        if (socketMsgDto == null) {
-            readableBytes = msg.readableBytes();
-            if (readableBytes < 5) {
-                compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer();
-                //数据不足，继续等待
-                compositeByteBuf.addComponent(true, msg);
-                readCacheMap.put(channelId, new SocketMsgDto(compositeByteBuf, msgSizeLimit));
-                return;
-            }
-            ByteBuf headMsg = msg.readRetainedSlice(5);
-            msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
-            //5+2+3+1
-            if (msgSize < 11) {
-                //丢弃并关闭连接
-                throw new SocketException("非法报文");
-            }
-            compositeByteBuf = ByteBufAllocator.DEFAULT.compositeBuffer();
-            compositeByteBuf.addComponent(true, headMsg);
-            compositeByteBuf.readerIndex(5);
-            writeIndex = compositeByteBuf.writerIndex();
-            readCacheMap.put(channelId, new SocketMsgDto(msgSize, compositeByteBuf, msgSizeLimit));
-        } else {
-            compositeByteBuf = socketMsgDto.getFull();
-            msgSize = socketMsgDto.getSize();
-            if (msgSize == null) {
-                //补全数据
-                int writerIndex = compositeByteBuf.writerIndex();
-                readableBytes = msg.readableBytes();
-                if (writerIndex < 4) {
-                    if (writerIndex + readableBytes < 4) {
-                        //数据不足，继续等待
-                        compositeByteBuf.addComponent(true, msg);
-                        //刷新
-                        //readCacheMap.put(channelId, socketMsgDto);
-                        return;
-                    }
-                }
-                ByteBuf headMsg = msg.readRetainedSlice(5);
-                msgSize = SocketMessageUtil.checkMsgFirst(headMsg, msgSizeLimit);
-                if (msgSize < 11) {
-                    //丢弃并关闭连接
-                    throw new SocketException("非法报文");
-                }
-                compositeByteBuf.addComponent(true, headMsg);
-                compositeByteBuf.readerIndex(5);
-                socketMsgDto.setSize(msgSize);
-                //刷新
-                //readCacheMap.put(channelId, socketMsgDto);
-            }
-            writeIndex = compositeByteBuf.writerIndex();
-        }
-        ByteBuf stickMsg = null;
-        int leftDataLength = msgSize - writeIndex;
-        if (leftDataLength > 0) {
-            readableBytes = msg.readableBytes();
-            int i = leftDataLength - readableBytes;
-            if (i > 0) {
-                //继续读取
-                compositeByteBuf.addComponent(true, msg);
-                return;
-            } else if (i < 0) {
-                //此处粘包了，手动切割
-                compositeByteBuf.addComponent(true, msg.slice(msg.readerIndex(), leftDataLength));
-                stickMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
-            } else {
-                compositeByteBuf.addComponent(true, msg);
-            }
-        } else if (leftDataLength < 0) {
-            //丢弃并关闭连接
-            throw new SocketException("报文数据异常");
-        }
-        Byte secretByte = SocketMessageUtil.checkMsgTail(compositeByteBuf, msgSize);
-        //读取完成，写入队列
-        byte[] decodeBytes;
-        try {
-            byte[] bytes = new byte[msgSize - 8];
-            compositeByteBuf.readBytes(bytes);
-                    /*if (log.isDebugEnabled()) {
-                        log.debug("byteBuf完成 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
-                        log.debug("msg完成 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
-                    }*/
-            decodeBytes = msgDecode.decode(ctx.channel(), bytes, secretByte);
-        } catch (Exception e) {
-            log.debug("解码错误", e);
-            //丢弃并关闭连接
-            throw new SocketException("报文解码错误");
-        }
-        int length = decodeBytes.length;
-        boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
-        if (length > 3) {
-            log.debug("数据已接收，channelId：{}", channelId);
-            putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
-        } else {
-            if (!isAckData) {
-                //接收ackBytes
-                byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
-                String key = Integer.toString(ackKey).concat(channelId.asShortText());
-                SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
-                if (socketAckThreadDto != null) {
-                    synchronized (socketAckThreadDto) {
-                        socketAckThreadDto.setIsAck(true);
-                        socketAckThreadDto.notify();
-                    }
-//                            LockSupport.unpark(socketAckThreadDto.getThread());
-                    log.debug("接收ack字节：{}，已完成", ackBytes);
-                    readCacheMap.invalidate(channelId);
-                    return;
-                } else {
-                    log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
-                }
-            } else {
-                //关闭连接
-                throw new SocketException("报文数据异常");
-            }
-            //丢弃
-            readCacheMap.invalidate(channelId);
-            return;
-        }
-        if (isAckData) {
-            byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-            try {
-                socketChannel.writeAndFlush(ackBytes);
-                log.debug("发送ack字节：{}", ackBytes);
-                readCacheMap.invalidate(channelId);
-                return;
-            } catch (Exception e) {
-                log.error("ack编码错误", e);
-            }
-        }
-        //正常丢弃
-        readCacheMap.invalidate(channelId);
-        if (stickMsg != null) {
-            parsingMsg(ctx, stickMsg);
-        }
-    }
-
-    public void handlerWrite(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        if (msg instanceof byte[]) {
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), (byte[]) msg))), promise);
-        } else {
-            //传输其他类型数据时暂不支持ACK，需使用byte[]
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(msgEncode.encode(ctx.channel(), SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
-        }
-        log.debug("数据已发送，channelId：{}", ctx.channel().id());
     }
 
     public void write(Channel socketChannel, byte[] data) {
@@ -398,15 +135,5 @@ public class SocketMsgHandler {
                 Thread.currentThread().interrupt();
             }
         }
-    }
-
-    @FunctionalInterface
-    public interface MsgDecode {
-        byte[] decode(Channel channel, byte[] data, byte secretByte);
-    }
-
-    @FunctionalInterface
-    public interface MsgEncode {
-        SocketEncodeDto encode(Channel channel, byte[] data);
     }
 }

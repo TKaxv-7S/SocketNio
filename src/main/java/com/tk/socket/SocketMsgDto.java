@@ -3,11 +3,9 @@ package com.tk.socket;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
-import lombok.Data;
 
 import java.io.Serializable;
 
-@Data
 public class SocketMsgDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -16,7 +14,7 @@ public class SocketMsgDto implements Serializable {
     private ByteBuf head;
 
     //身部
-    private ByteBuf body;
+    private byte[] body;
 
     //验证字节，1字节
     private Byte verifyByte0;
@@ -39,6 +37,18 @@ public class SocketMsgDto implements Serializable {
     private Boolean isDone;
 
     private SocketMsgDto next;
+
+    public CompositeByteBuf getFull() {
+        return full;
+    }
+
+    public Byte getSecretByte() {
+        return secretByte;
+    }
+
+    public SocketMsgDto getNext() {
+        return next;
+    }
 
     public SocketMsgDto(Integer sizeLimit) {
         this.full = ByteBufAllocator.DEFAULT.compositeBuffer();
@@ -67,7 +77,11 @@ public class SocketMsgDto implements Serializable {
         return next;
     }
 
-    public Boolean parsingMsg(ByteBuf msg) {
+    public byte[] getBody() {
+        return body;
+    }
+
+    public synchronized Boolean parsingMsg(ByteBuf msg) {
         int readableBytes;
         int writeIndex;
         if (full.readableBytes() <= 0) {
@@ -134,6 +148,8 @@ public class SocketMsgDto implements Serializable {
             //丢弃并关闭连接
             throw new SocketException("报文数据异常");
         }
+        body = new byte[size - 8];
+        full.readBytes(body);
         checkMsgTail(full, size);
         isDone = true;
         if (stickMsg != null) {

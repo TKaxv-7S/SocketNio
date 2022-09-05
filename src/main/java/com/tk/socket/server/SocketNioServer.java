@@ -11,6 +11,7 @@ import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
@@ -38,7 +39,7 @@ public class SocketNioServer extends AbstractSocketNioServer {
     public SocketNioServer(SocketServerConfig config) {
         super(config);
         this.socketServerHandler = config.getSocketServerHandler();
-        this.socketClientCache = Optional.of(config.getSocketClientCache()).orElse(new SocketClientCache<>());
+        this.socketClientCache = Optional.ofNullable(config.getSocketClientCache()).orElse(new SocketClientCache<>());
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {
