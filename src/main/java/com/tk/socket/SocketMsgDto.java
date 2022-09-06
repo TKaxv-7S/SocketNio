@@ -3,9 +3,11 @@ package com.tk.socket;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 
+@Slf4j
 public class SocketMsgDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -34,7 +36,7 @@ public class SocketMsgDto implements Serializable {
     private final Integer sizeLimit;
 
     //isFinal
-    private Boolean isDone;
+    private Boolean isDone = false;
 
     private SocketMsgDto next;
 
@@ -82,9 +84,12 @@ public class SocketMsgDto implements Serializable {
     }
 
     public synchronized Boolean parsingMsg(ByteBuf msg) {
+        if (!msg.isReadable()) {
+            return true;
+        }
         int readableBytes;
         int writeIndex;
-        if (full.readableBytes() <= 0) {
+        if (full.readerIndex() <= 0) {
             readableBytes = msg.readableBytes();
             if (readableBytes < 5) {
                 //数据不足，继续等待
@@ -150,23 +155,26 @@ public class SocketMsgDto implements Serializable {
         }
         body = new byte[size - 8];
         full.readBytes(body);
-        checkMsgTail(full, size);
+        checkMsgTail();
         isDone = true;
         if (stickMsg != null) {
             SocketMsgDto next = buildNext();
-            next.parsingMsg(stickMsg);
-            return false;
+            return next.parsingMsg(stickMsg);
         }
         return true;
     }
 
-    private void checkMsgTail(ByteBuf msg, int msgSize) {
+    private void checkMsgTail() {
         //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
-        verifyByte0 = msg.getByte(size - 3);
-        verifyByte1 = msg.getByte(size - 2);
-        secretByte = msg.getByte(size - 1);
-        if (verifyByte0 != msg.getByte(1) || verifyByte1 != msg.getByte(msgSize / 2)) {
-            throw new SocketException("报文尾部验证失败");
+        verifyByte0 = full.readByte();
+        verifyByte1 = full.readByte();
+        secretByte = full.readByte();
+        if (verifyByte0 == full.getByte(1) && verifyByte1 == full.getByte(size / 2)) {
+            return;
         }
+        log.error("{} != {} ?", verifyByte0, full.getByte(1));
+        log.error("{} != {} ?", verifyByte1, full.getByte(size / 2));
+        log.error("msg：{}", full);
+        throw new SocketException("报文尾部验证失败");
     }
 }

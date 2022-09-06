@@ -1,5 +1,8 @@
 package com.tk.socket.client;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.tk.socket.*;
 import com.tk.utils.JsonUtil;
 import io.netty.bootstrap.Bootstrap;
@@ -55,13 +58,24 @@ public abstract class AbstractSocketNioClient {
 
     protected Consumer<AbstractSocketNioClient> connCallback;
 
-    private final AttributeKey<SocketMsgDto> msgKey = AttributeKey.valueOf("msg");
+    private final Cache<ChannelId, SocketMsgDto> readCacheMap;
 
-    private final AttributeKey<Map<String, SocketAckThreadDto>> ackMapKey = AttributeKey.valueOf("ackMap");
+    private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
     public AbstractSocketNioClient(AbstractSocketClientConfig config) {
         this.config = config;
         this.msgSizeLimit = Optional.ofNullable(config.getMsgSizeLimit()).orElse(4 * 1024 * 1024);
+        this.readCacheMap = Caffeine.newBuilder()
+                .expireAfterAccess(10, TimeUnit.SECONDS)
+                .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
+                    if (value != null) {
+                        CompositeByteBuf msg = value.getFull();
+                        while (msg.refCnt() > 0) {
+                            ReferenceCountUtil.release(msg);
+                        }
+                    }
+                })
+                .build();
         this.initRunnable = () -> {
             try {
                 synchronized (lockObj) {
@@ -156,104 +170,88 @@ public abstract class AbstractSocketNioClient {
 
             Channel socketChannel = ctx.channel();
             ChannelId channelId = socketChannel.id();
-            Attribute<SocketMsgDto> socketMsgDtoAttribute = socketChannel.attr(msgKey);
-            SocketMsgDto socketMsgDto = socketMsgDtoAttribute.setIfAbsent(new SocketMsgDto(msgSizeLimit));
-            if (socketMsgDto == null) {
-                synchronized (socketMsgDtoAttribute) {
-                    socketMsgDto = new SocketMsgDto(msgSizeLimit);
-                    socketMsgDtoAttribute.set(socketMsgDto);
-                }
-            }
-            SocketMsgDto prevSocketMsgDto = null;
-            try {
-                do {
-                    if (socketMsgDto.parsingMsg(msg)) {
-                        //正常丢弃
-                        while (msg.refCnt() > 0) {
-                            ReferenceCountUtil.release(msg);
+            SocketMsgDto socketMsgDto = readCacheMap.get(channelId, key -> new SocketMsgDto(msgSizeLimit));
+            synchronized (socketMsgDto) {
+                SocketMsgDto prevSocketMsgDto = null;
+                try {
+                    do {
+                        if (socketMsgDto.parsingMsg(msg)) {
+                            //正常丢弃
+                            readCacheMap.invalidate(channelId);
                         }
-                    }
-                    Byte secretByte = socketMsgDto.getSecretByte();
-                    //读取完成，写入队列
-                    byte[] decodeBytes;
-                    try {
+                        if (!socketMsgDto.isDone()) {
+                            break;
+                        }
+                        Byte secretByte = socketMsgDto.getSecretByte();
+                        //读取完成，写入队列
+                        byte[] decodeBytes;
+                        try {
 //            byte[] bytes = new byte[size - 8];
 //            full.readBytes(bytes);
                     /*if (log.isDebugEnabled()) {
                         log.debug("byteBuf完成 已读：{}，已写：{}，容量，{}", byteBuf.readerIndex(), byteBuf.writerIndex(), byteBuf.capacity());
                         log.debug("msg完成 已读：{}，已写：{}，容量，{}", msg.readerIndex(), msg.writerIndex(), msg.capacity());
                     }*/
-                        decodeBytes = decode(socketMsgDto.getBody(), secretByte);
-                    } catch (Exception e) {
-                        log.debug("解码错误", e);
-                        //丢弃并关闭连接
-                        throw new SocketException("报文解码错误");
-                    }
-                    prevSocketMsgDto = socketMsgDto;
-
-                    int length = decodeBytes.length;
-                    boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
-                    if (length > 3) {
-                        log.debug("数据已接收，channelId：{}", channelId);
-                        socketMsgHandler.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
-                    } else {
-                        if (!isAckData) {
-                            //接收ackBytes
-                            byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                            int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
-                            Attribute<Map<String, SocketAckThreadDto>> attr = socketChannel.attr(ackMapKey);
-                            Map<String, SocketAckThreadDto> ackThreadDtoMap;
-                            synchronized (attr) {
-                                ackThreadDtoMap = attr.get();
-                                if (ackThreadDtoMap == null) {
-                                    ackThreadDtoMap = new ConcurrentHashMap<>();
-                                    attr.set(ackThreadDtoMap);
-                                }
-                            }
-                            SocketAckThreadDto socketAckThreadDto = ackThreadDtoMap.get(Integer.toString(ackKey));
-                            if (socketAckThreadDto != null) {
-                                synchronized (socketAckThreadDto) {
-                                    socketAckThreadDto.setIsAck(true);
-                                    socketAckThreadDto.notify();
-                                }
-//                            LockSupport.unpark(socketAckThreadDto.getThread());
-                                log.debug("接收ack字节：{}，已完成", ackBytes);
-                                break;
-                            } else {
-                                log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
-                            }
-                        } else {
-                            //关闭连接
-                            throw new SocketException("报文数据异常");
-                        }
-                        //丢弃
-                        break;
-                    }
-                    if (isAckData) {
-                        byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                        try {
-                            socketChannel.writeAndFlush(ackBytes);
-                            log.debug("发送ack字节：{}", ackBytes);
-                            break;
+                            decodeBytes = decode(socketMsgDto.getBody(), secretByte);
                         } catch (Exception e) {
-                            log.error("ack编码错误", e);
+                            log.debug("解码错误", e);
+                            //丢弃并关闭连接
+                            throw new SocketException("报文解码错误");
                         }
-                    }
-                    socketMsgDto = socketMsgDto.getNext();
-                } while (socketMsgDto != null);
-            } catch (Exception e) {
-                log.error("数据解析异常：{}", e.getMessage());
-                //丢弃数据并关闭连接
-                //log.debug("msg.refCnt：{}", msg.refCnt());
-                socketChannel.close();
-                while (msg.refCnt() > 0) {
-                    ReferenceCountUtil.release(msg);
-                }
-                //异常丢弃
-                if (prevSocketMsgDto != null) {
-                    CompositeByteBuf full = prevSocketMsgDto.getFull();
-                    while (full.refCnt() > 0) {
-                        ReferenceCountUtil.release(full);
+                        prevSocketMsgDto = socketMsgDto;
+
+                        int length = decodeBytes.length;
+                        boolean isAckData = SocketMessageUtil.isAckData(decodeBytes);
+                        if (length > 3) {
+                            log.debug("数据已接收，channelId：{}", channelId);
+                            socketMsgHandler.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
+                        } else {
+                            if (!isAckData) {
+                                //接收ackBytes
+                                byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
+                                int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
+                                String key = Integer.toString(ackKey).concat(channelId.asShortText());
+                                SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
+                                if (socketAckThreadDto != null) {
+                                    synchronized (socketAckThreadDto) {
+                                        socketAckThreadDto.setIsAck(true);
+                                        socketAckThreadDto.notify();
+                                    }
+//                            LockSupport.unpark(socketAckThreadDto.getThread());
+                                    log.debug("接收ack字节：{}，已完成", ackBytes);
+                                    break;
+                                } else {
+                                    log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
+                                }
+                            } else {
+                                //关闭连接
+                                throw new SocketException("报文数据异常");
+                            }
+                            //丢弃
+                            break;
+                        }
+                        if (isAckData) {
+                            byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
+                            try {
+                                socketChannel.writeAndFlush(ackBytes);
+                                log.debug("发送ack字节：{}", ackBytes);
+                                break;
+                            } catch (Exception e) {
+                                log.error("ack编码错误", e);
+                            }
+                        }
+                        socketMsgDto = socketMsgDto.getNext();
+                    } while (socketMsgDto != null);
+                } catch (Exception e) {
+//                    log.error("数据解析异常：{}", e.getMessage());
+                    //log.debug("msg.refCnt：{}", msg.refCnt());
+                    log.error("数据解析异常", e);
+                    //丢弃数据并关闭连接
+                    socketChannel.close();
+                    //异常丢弃
+                    readCacheMap.invalidate(channelId);
+                    while (msg.refCnt() > 0) {
+                        ReferenceCountUtil.release(msg);
                     }
                 }
             }
@@ -292,7 +290,31 @@ public abstract class AbstractSocketNioClient {
         }
         Channel channel = channelPool.borrowChannel();
         try {
-            return socketMsgHandler.writeAck(channel, data, Math.min(seconds, 10));
+            seconds = Math.min(seconds, 10);
+            byte[] packageData = SocketMessageUtil.packageData(data, true);
+            byte[] needAckBytes = {(byte) (packageData[0] & (byte) 0x7F), packageData[1], packageData[2]};
+            int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
+            String key = Integer.toString(ackKey).concat(channel.id().asShortText());
+            try {
+                SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
+                ackDataMap.put(key, ackThreadDto);
+                synchronized (ackThreadDto) {
+                    channel.writeAndFlush(packageData);
+                    log.debug("等待ack字节：{}", needAckBytes);
+                    ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
+                }
+//            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
+                SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
+                return socketAckThreadDto != null && socketAckThreadDto.getIsAck();
+            } catch (InterruptedException e) {
+                log.error("同步写异常", e);
+                ackDataMap.remove(key);
+                throw new SocketException("同步写异常");
+            } catch (Exception e) {
+                log.error("同步写异常", e);
+                ackDataMap.remove(key);
+                throw e;
+            }
         } finally {
             channelPool.returnChannel(channel);
         }
