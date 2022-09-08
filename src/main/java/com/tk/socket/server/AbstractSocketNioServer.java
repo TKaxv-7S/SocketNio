@@ -15,6 +15,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.unix.PreferredDirectByteBufAllocator;
+import io.netty.util.Attribute;
+import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -51,7 +53,9 @@ public abstract class AbstractSocketNioServer {
 
     private final Cache<ChannelId, Channel> unknownChannelCache;
 
-    private final Cache<ChannelId, SocketMsgDto> readCacheMap;
+    private final AttributeKey<SocketMsgDto> msgKey = AttributeKey.valueOf("msg");
+
+//    private final Cache<ChannelId, SocketMsgDto> readCacheMap;
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
@@ -69,17 +73,22 @@ public abstract class AbstractSocketNioServer {
                     }
                 })
                 .build();
-        this.readCacheMap = Caffeine.newBuilder()
+        /*this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(10, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
                     if (value != null) {
                         CompositeByteBuf msg = value.getFull();
                         while (msg.refCnt() > 0) {
+                            int numComponents = msg.numComponents();
+                            for (int i = 0; i < numComponents; i++) {
+                                ByteBuf component = msg.component(i);
+                                log.info("component index:{}，refCnt:{}", i, component.refCnt());
+                            }
                             ReferenceCountUtil.release(msg);
                         }
                     }
                 })
-                .build();
+                .build();*/
         this.initRunnable = () -> {
             try {
                 synchronized (this) {
@@ -182,16 +191,32 @@ public abstract class AbstractSocketNioServer {
 
             Channel socketChannel = ctx.channel();
             ChannelId channelId = socketChannel.id();
-            SocketMsgDto socketMsgDto = readCacheMap.get(channelId, key -> new SocketMsgDto(msgSizeLimit));
+            Attribute<SocketMsgDto> socketMsgDtoAttribute = socketChannel.attr(msgKey);
+            SocketMsgDto socketMsgDto = socketMsgDtoAttribute.setIfAbsent(new SocketMsgDto(msgSizeLimit));
+            if (socketMsgDto == null) {
+                synchronized (socketMsgDtoAttribute) {
+                    socketMsgDto = new SocketMsgDto(msgSizeLimit);
+                    socketMsgDtoAttribute.set(socketMsgDto);
+                }
+            }
+
+//            SocketMsgDto socketMsgDto = readCacheMap.get(channelId, key -> new SocketMsgDto(msgSizeLimit));
             synchronized (socketMsgDto) {
                 SocketMsgDto prevSocketMsgDto = null;
                 try {
                     do {
                         if (socketMsgDto.parsingMsg(msg)) {
+                            socketMsgDtoAttribute.set(null);
                             //正常丢弃
-                            readCacheMap.invalidate(channelId);
+                            while (msg.refCnt() > 0) {
+                                ReferenceCountUtil.release(msg);
+                            }
                         }
                         if (!socketMsgDto.isDone()) {
+                            CompositeByteBuf full = socketMsgDto.getFull();
+                            byte[] dst = new byte[full.writerIndex()];
+                            full.getBytes(0, dst);
+                            log.info("full:{}", dst);
                             break;
                         }
                         Byte secretByte = socketMsgDto.getSecretByte();
@@ -258,10 +283,16 @@ public abstract class AbstractSocketNioServer {
 //                    log.error("数据解析异常：{}", e.getMessage());
                     //log.debug("msg.refCnt：{}", msg.refCnt());
                     log.error("数据解析异常", e);
+                    socketMsgDtoAttribute.set(null);
                     //丢弃数据并关闭连接
                     socketChannel.close();
                     //异常丢弃
-                    readCacheMap.invalidate(channelId);
+                    if (prevSocketMsgDto != null) {
+                        CompositeByteBuf full = prevSocketMsgDto.getFull();
+                        while (full.refCnt() > 0) {
+                            ReferenceCountUtil.release(full);
+                        }
+                    }
                     while (msg.refCnt() > 0) {
                         ReferenceCountUtil.release(msg);
                     }
