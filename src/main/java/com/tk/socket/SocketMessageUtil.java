@@ -1,6 +1,5 @@
 package com.tk.socket;
 
-import io.netty.buffer.ByteBuf;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ThreadLocalRandom;
@@ -49,40 +48,6 @@ public class SocketMessageUtil {
                 ((byteArray[1] & 0xFF) << 16) |
                 ((byteArray[2] & 0xFF) << 8) |
                 (byteArray[2] & 0xFF);
-    }
-
-    public static int checkMsgFirst(ByteBuf msg, int dataSizeLimit) {
-        //验证报文头是否为：10100101
-        if (dataStartByte != msg.getByte(0)) {
-            return 0;
-        }
-        int msgSize = ((msg.getByte(1) & 0xFF) << 24) |
-                ((msg.getByte(2) & 0xFF) << 16) |
-                ((msg.getByte(3) & 0xFF) << 8) |
-                (msg.getByte(4) & 0xFF);
-        if (msgSize > dataSizeLimit) {
-            return 0;
-        }
-        /*if (log.isDebugEnabled()) {
-            log.debug("检查报文 长度：{}，头部：{},{},{},{},{}"
-                    , msgSize
-                    , msg.getByte(0)
-                    , msg.getByte(1)
-                    , msg.getByte(2)
-                    , msg.getByte(3)
-                    , msg.getByte(4)
-            );
-        }*/
-        return msgSize;
-    }
-
-    public static Byte checkMsgTail(ByteBuf msg, int msgSize) {
-        //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
-        if (msg.getByte(msgSize - 3) == msg.getByte(1) && msg.getByte(msgSize - 2) == msg.getByte(msgSize / 2)) {
-            //返回加密类型字节
-            return msg.getByte(msgSize - 1);
-        }
-        throw new SocketException("报文尾部验证失败");
     }
 
     public static byte[] packageData(byte[] data, boolean isAck) {

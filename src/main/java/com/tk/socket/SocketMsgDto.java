@@ -7,86 +7,117 @@ import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
+import java.util.Optional;
 
 @Slf4j
 public class SocketMsgDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    //头部，5字节
-    private ByteBuf head;
+    public static final byte DATA_START_BYTE = (byte) 0xA5;
 
     //身部
-    private byte[] body;
+    private byte[] msg;
 
-    //验证字节，1字节
+    //验证字节
     private Byte verifyByte0;
 
-    //验证字节，1字节
+    //验证字节
     private Byte verifyByte1;
 
-    //加密字节，1字节
+    //加密字节
     private Byte secretByte;
 
     //全部
-    private final CompositeByteBuf full;
+    private CompositeByteBuf full;
 
     //长度
     private Integer size;
 
-    private final Integer sizeLimit;
+    private Long msgParsedTimeMillis;
 
-    //isFinal
     private Boolean isDone = false;
 
-    private SocketMsgDto next;
+    private Boolean isRelease = false;
 
-    public CompositeByteBuf getFull() {
-        return full;
+    private final Integer sizeLimit;
+
+    private final Long msgExpireTimeMillis;
+
+    public byte[] getMsg() {
+        return msg;
+    }
+
+    public Byte getVerifyByte0() {
+        return verifyByte0;
+    }
+
+    public Byte getVerifyByte1() {
+        return verifyByte1;
     }
 
     public Byte getSecretByte() {
         return secretByte;
     }
 
-    public SocketMsgDto getNext() {
-        return next;
+    public CompositeByteBuf getFull() {
+        return full;
     }
 
-    public SocketMsgDto(Integer sizeLimit) {
-        this.full = ByteBufAllocator.DEFAULT.compositeBuffer();
-        this.sizeLimit = sizeLimit;
+    public Long getMsgParsedTimeMillis() {
+        return msgParsedTimeMillis;
     }
 
-    public SocketMsgDto(CompositeByteBuf full, Integer sizeLimit) {
-        this.full = full;
-        this.sizeLimit = sizeLimit;
-    }
-
-    public SocketMsgDto(Integer size, CompositeByteBuf full, Integer sizeLimit) {
-        this.size = size;
-        this.full = full;
-        this.sizeLimit = sizeLimit;
-    }
-
-    public Boolean isDone() {
+    public Boolean getDone() {
         return isDone;
     }
 
-    private synchronized SocketMsgDto buildNext() {
-        if (next == null) {
-            return next = new SocketMsgDto(sizeLimit);
+    public Boolean getRelease() {
+        return isRelease;
+    }
+
+    public Integer getSize() {
+        return size;
+    }
+
+    public Integer getSizeLimit() {
+        return sizeLimit;
+    }
+
+    public Long getMsgExpireTimeMillis() {
+        return msgExpireTimeMillis;
+    }
+
+    public SocketMsgDto(Integer sizeLimit, Integer msgExpireTimeMillis) {
+        this(ByteBufAllocator.DEFAULT.compositeBuffer(), null, sizeLimit, msgExpireTimeMillis);
+    }
+
+    public SocketMsgDto(CompositeByteBuf full, Integer sizeLimit) {
+        this(full, null, sizeLimit, null);
+    }
+
+    public SocketMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit) {
+        this(full, size, sizeLimit, null);
+    }
+
+    public SocketMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit, Integer msgExpireSeconds) {
+        this.size = size;
+        this.full = full;
+        this.sizeLimit = sizeLimit;
+        this.msgExpireTimeMillis = Optional.ofNullable(msgExpireSeconds).orElse(10) * 1000L;
+    }
+
+    public synchronized ByteBuf parsingMsg(ByteBuf msg) {
+        if (isDone) {
+            clear();
         }
-        return next;
-    }
-
-    public byte[] getBody() {
-        return body;
-    }
-
-    public synchronized Boolean parsingMsg(ByteBuf msg) {
+        long currentTimeMillis = System.currentTimeMillis();
+        if (msgParsedTimeMillis != null && currentTimeMillis > msgParsedTimeMillis + msgExpireTimeMillis) {
+            clear();
+        }
+        msgParsedTimeMillis = currentTimeMillis;
         if (!msg.isReadable()) {
-            return true;
+            return null;
         }
         int readableBytes;
         int writeIndex;
@@ -95,10 +126,11 @@ public class SocketMsgDto implements Serializable {
             if (readableBytes < 5) {
                 //数据不足，继续等待
                 full.addComponent(true, msg);
-                return false;
+                return null;
             }
-            head = msg.readRetainedSlice(5);
-            size = SocketMessageUtil.checkMsgFirst(head, sizeLimit);
+            //头部，5字节
+            ByteBuf head = msg.readRetainedSlice(5);
+            size = checkMsgFirst(head);
             //5+2+3+1
             if (size < 11) {
                 //丢弃并关闭连接
@@ -118,11 +150,12 @@ public class SocketMsgDto implements Serializable {
                         full.addComponent(true, msg);
                         //刷新
                         //readCacheMap.put(channelId, socketMsgDto);
-                        return false;
+                        return null;
                     }
                 }
-                head = msg.readRetainedSlice(5);
-                size = SocketMessageUtil.checkMsgFirst(head, sizeLimit);
+                //头部，5字节
+                ByteBuf head = msg.readRetainedSlice(5);
+                size = checkMsgFirst(head);
                 if (size < 11) {
                     //丢弃并关闭连接
                     throw new SocketException("非法报文");
@@ -142,11 +175,11 @@ public class SocketMsgDto implements Serializable {
             if (i > 0) {
                 //继续读取
                 full.addComponent(true, msg);
-                return true;
+                return null;
             } else if (i < 0) {
                 //此处粘包了，手动切割
-                full.addComponent(true, msg.slice(msg.readerIndex(), leftDataLength));
-                stickMsg = msg.retainedSlice(msg.readerIndex() + leftDataLength, -i);
+                full.addComponent(true, msg.readSlice(leftDataLength));
+                stickMsg = msg.readRetainedSlice(-i);
             } else {
                 full.addComponent(true, msg);
             }
@@ -155,20 +188,38 @@ public class SocketMsgDto implements Serializable {
             throw new SocketException("报文数据异常");
         }
         checkMsgTail();
-        body = new byte[size - 8];
-        full.readBytes(body);
+        this.msg = new byte[size - 8];
+        full.getBytes(5, this.msg);
         isDone = true;
-        if (stickMsg != null) {
-            while (full.refCnt() > 0) {
-                ReferenceCountUtil.release(full);
-            }
-            SocketMsgDto next = buildNext();
-            return next.parsingMsg(stickMsg);
-        }
-        return true;
+        return stickMsg;
     }
 
-    private void checkMsgTail() {
+    public int checkMsgFirst(ByteBuf msg) {
+        //验证报文头是否为：10100101
+        if (DATA_START_BYTE != msg.getByte(0)) {
+            return 0;
+        }
+        int msgSize = ((msg.getByte(1) & 0xFF) << 24) |
+                ((msg.getByte(2) & 0xFF) << 16) |
+                ((msg.getByte(3) & 0xFF) << 8) |
+                (msg.getByte(4) & 0xFF);
+        if (msgSize > sizeLimit) {
+            return 0;
+        }
+        /*if (log.isDebugEnabled()) {
+            log.debug("检查报文 长度：{}，头部：{},{},{},{},{}"
+                    , msgSize
+                    , msg.getByte(0)
+                    , msg.getByte(1)
+                    , msg.getByte(2)
+                    , msg.getByte(3)
+                    , msg.getByte(4)
+            );
+        }*/
+        return msgSize;
+    }
+
+    private synchronized void checkMsgTail() {
         //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
         verifyByte0 = full.getByte(size - 3);
         verifyByte1 = full.getByte(size - 2);
@@ -176,11 +227,31 @@ public class SocketMsgDto implements Serializable {
         if (verifyByte0 == full.getByte(1) && verifyByte1 == full.getByte(size / 2)) {
             return;
         }
-        log.error("{} != {} ?", verifyByte0, full.getByte(1));
-        log.error("{} != {} ?", verifyByte1, full.getByte(size / 2));
-        byte[] dst = new byte[full.writerIndex()];
-        full.getBytes(0, dst);
-        log.error("full:{}", dst);
         throw new SocketException("报文尾部验证失败");
+    }
+
+    public synchronized Boolean isExpire() {
+        return msgParsedTimeMillis != null && msgParsedTimeMillis + msgExpireTimeMillis >= System.currentTimeMillis();
+    }
+
+    public synchronized void release() {
+        while (full.refCnt() > 0) {
+            ReferenceCountUtil.release(full);
+        }
+        isRelease = true;
+    }
+
+    public synchronized void clear() {
+        while (full.refCnt() > 0) {
+            ReferenceCountUtil.release(full);
+        }
+        msg = null;
+        verifyByte0 = null;
+        verifyByte1 = null;
+        secretByte = null;
+        full = ByteBufAllocator.DEFAULT.compositeBuffer();
+        size = null;
+        isDone = false;
+        isRelease = false;
     }
 }

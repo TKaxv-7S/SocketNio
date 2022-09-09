@@ -1,17 +1,10 @@
 package com.tk.socket;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalCause;
-import io.netty.buffer.CompositeByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelId;
-import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 
@@ -19,8 +12,6 @@ import java.util.function.BiConsumer;
 public class SocketMsgHandler {
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
-
-    private final Cache<ChannelId, SocketMsgDto> readCacheMap;
 
     private final BiConsumer<ChannelHandlerContext, byte[]> dataConsumer;
 
@@ -31,22 +22,9 @@ public class SocketMsgHandler {
     }
 
     public SocketMsgHandler(
-            Integer msgExpireSeconds
-            , BiConsumer<ChannelHandlerContext, byte[]> dataConsumer
+            BiConsumer<ChannelHandlerContext, byte[]> dataConsumer
             , int maxDataThreadCount
     ) {
-        msgExpireSeconds = Optional.ofNullable(msgExpireSeconds).orElse(10);
-        this.readCacheMap = Caffeine.newBuilder()
-                .expireAfterAccess(msgExpireSeconds, TimeUnit.SECONDS)
-                .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
-                    if (value != null) {
-                        CompositeByteBuf msg = value.getFull();
-                        while (msg.refCnt() > 0) {
-                            ReferenceCountUtil.release(msg);
-                        }
-                    }
-                })
-                .build();
         this.dataConsumer = dataConsumer;
 
         int corePoolSize = Runtime.getRuntime().availableProcessors();
@@ -104,10 +82,6 @@ public class SocketMsgHandler {
         }
     }
 
-    public void cleanUpReadCacheMap() {
-        readCacheMap.cleanUp();
-    }
-
     public boolean shutdownNow() {
         try {
             shutdownAndAwaitTermination(dataConsumerThreadPoolExecutor, 30, TimeUnit.SECONDS);
@@ -115,7 +89,6 @@ public class SocketMsgHandler {
             log.error("socket消费线程池关闭失败");
             throw new SocketException(e, "socket消费线程池关闭异常");
         }
-        cleanUpReadCacheMap();
         ackDataMap.clear();
         return true;
     }
