@@ -19,12 +19,6 @@ public class SocketMsgDto implements Serializable {
     //身部
     private byte[] msg;
 
-    //验证字节
-    private Byte verifyByte0;
-
-    //验证字节
-    private Byte verifyByte1;
-
     //加密字节
     private Byte secretByte;
 
@@ -46,14 +40,6 @@ public class SocketMsgDto implements Serializable {
 
     public byte[] getMsg() {
         return msg;
-    }
-
-    public Byte getVerifyByte0() {
-        return verifyByte0;
-    }
-
-    public Byte getVerifyByte1() {
-        return verifyByte1;
     }
 
     public Byte getSecretByte() {
@@ -221,10 +207,8 @@ public class SocketMsgDto implements Serializable {
 
     private synchronized void checkMsgTail() {
         //报文尾共3字节，2字节为 msgSize首字节 + 数据中间字节，1字节加密类型
-        verifyByte0 = full.getByte(size - 3);
-        verifyByte1 = full.getByte(size - 2);
-        secretByte = full.getByte(size - 1);
-        if (verifyByte0 == full.getByte(1) && verifyByte1 == full.getByte(size / 2)) {
+        if (full.getByte(size - 3) == full.getByte(1) && full.getByte(size - 2) == full.getByte(size / 2)) {
+            secretByte = full.getByte(size - 1);
             return;
         }
         throw new SocketException("报文尾部验证失败");
@@ -246,8 +230,6 @@ public class SocketMsgDto implements Serializable {
             ReferenceCountUtil.release(full);
         }
         msg = null;
-        verifyByte0 = null;
-        verifyByte1 = null;
         secretByte = null;
         full = ByteBufAllocator.DEFAULT.compositeBuffer();
         size = null;
