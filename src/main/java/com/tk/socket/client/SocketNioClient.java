@@ -1,7 +1,9 @@
 package com.tk.socket.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.tk.socket.*;
+import com.tk.socket.SocketException;
+import com.tk.socket.SocketJSONDataDto;
+import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.entity.SocketSecret;
 import com.tk.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
