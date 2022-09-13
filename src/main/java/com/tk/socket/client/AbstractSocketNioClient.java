@@ -124,7 +124,7 @@ public abstract class AbstractSocketNioClient {
         };
     }
 
-    public abstract SocketWrapMsgDto encode(byte[] data);
+    public abstract SocketClientWrapMsgDto encode(byte[] data);
 
     public abstract byte[] decode(byte[] data, byte secretByte);
 
@@ -264,12 +264,14 @@ public abstract class AbstractSocketNioClient {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             //TODO 优化
+            byte[] data;
             if (msg instanceof byte[]) {
-                ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(encode((byte[]) msg))), promise);
+                data = (byte[]) msg;
             } else {
                 //传输其他类型数据时暂不支持ACK，需使用byte[]
-                ctx.writeAndFlush(Unpooled.wrappedBuffer(SocketMessageUtil.packageMsg(encode(SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false)))), promise);
+                data = SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false);
             }
+            ctx.writeAndFlush(encode(data).toByteBuf(), promise);
             log.debug("数据已发送，channelId：{}", ctx.channel().id());
         }
     }

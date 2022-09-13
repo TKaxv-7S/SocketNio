@@ -9,10 +9,6 @@ public class SocketMessageUtil {
 
     private static final byte dataStartByte = (byte) 0xA5;
 
-    public static byte[] packageMsg(SocketWrapMsgDto socketWrapMsgDto) {
-        return packageMsg(socketWrapMsgDto.getData(), socketWrapMsgDto.getSecretByte());
-    }
-
     public static byte[] packageMsg(byte[] encode, byte secretByte) {
         int length = encode.length;
         int msgSize = length + 8;

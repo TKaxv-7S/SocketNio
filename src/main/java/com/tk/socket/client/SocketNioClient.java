@@ -184,17 +184,8 @@ public class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public SocketWrapMsgDto encode(byte[] data) {
-        byte[] encodeData = secret.encode(data);
-        int dataLength = encodeData.length;
-        int appKeyLength = appKey.length;
-        byte[] lengthBytes = SocketMessageUtil.intToByteArray(appKeyLength);
-        int index = 4 + appKeyLength;
-        byte[] encode = new byte[dataLength + index];
-        System.arraycopy(encodeData, 0, encode, index, dataLength);
-        System.arraycopy(lengthBytes, 0, encode, 0, 4);
-        System.arraycopy(appKey, 0, encode, 4, appKeyLength);
-        return new SocketWrapMsgDto(encode, (byte) 0xFF);
+    public SocketClientWrapMsgDto encode(byte[] data) {
+        return new SocketClientWrapMsgDto(secret.encode(data), appKey, (byte) 0xFF);
     }
 
     @Override
