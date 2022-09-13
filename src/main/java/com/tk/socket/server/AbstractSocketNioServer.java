@@ -286,7 +286,7 @@ public abstract class AbstractSocketNioServer {
                 //传输其他类型数据时暂不支持ACK，需使用byte[]
                 data = SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false);
             }
-            ctx.writeAndFlush(encode(ctx.channel(), data).toByteBuf(), promise);
+            ctx.writeAndFlush(encode(ctx.channel(), data).getWrapMsg(), promise);
             log.debug("数据已发送，channelId：{}", ctx.channel().id());
         }
     }

@@ -4,7 +4,6 @@ import com.tk.socket.*;
 import com.tk.utils.JsonUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -271,7 +270,7 @@ public abstract class AbstractSocketNioClient {
                 //传输其他类型数据时暂不支持ACK，需使用byte[]
                 data = SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false);
             }
-            ctx.writeAndFlush(encode(data).toByteBuf(), promise);
+            ctx.writeAndFlush(encode(data).getWrapMsg(), promise);
             log.debug("数据已发送，channelId：{}", ctx.channel().id());
         }
     }

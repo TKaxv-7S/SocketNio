@@ -13,18 +13,13 @@ public class SocketServerWrapMsgDto implements Serializable {
 
     public static final byte DATA_START_BYTE = (byte) 0xA5;
 
-    //数据
-    private final byte[] data;
+    private final ByteBuf wrapMsg;
 
-    //加密字节，1字节
-    private final byte secretByte;
-
-    public SocketServerWrapMsgDto(byte[] data, byte secretByte) {
-        this.data = data;
-        this.secretByte = secretByte;
+    public ByteBuf getWrapMsg() {
+        return wrapMsg;
     }
 
-    public ByteBuf toByteBuf() {
+    public SocketServerWrapMsgDto(byte[] data, byte secretByte) {
         int msgSize = data.length + 8;
         byte msgSizeFirstByte = (byte) (msgSize >>> 24);
         byte[] headBytes = {
@@ -35,20 +30,13 @@ public class SocketServerWrapMsgDto implements Serializable {
                 (byte) msgSize
         };
         byte[] bytes = {msgSizeFirstByte, DATA_START_BYTE, secretByte};
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(headBytes, data, bytes);
-        byteBuf.setByte(msgSize - 2, byteBuf.getByte(msgSize / 2));
-        /*if (log.isDebugEnabled()) {
-            byte[] src = new byte[byteBuf.writerIndex()];
-            byteBuf.getBytes(0, src);
-            log.debug("封装报文：{}", src);
-        }*/
-        return byteBuf;
+        this.wrapMsg = Unpooled.wrappedBuffer(headBytes, data, bytes);
+        wrapMsg.setByte(msgSize - 2, wrapMsg.getByte(msgSize / 2));
     }
 
     public byte[] toBytes() {
-        ByteBuf byteBuf = toByteBuf();
-        byte[] src = new byte[byteBuf.writerIndex()];
-        byteBuf.getBytes(0, src);
+        byte[] src = new byte[wrapMsg.writerIndex()];
+        wrapMsg.getBytes(0, src);
         return src;
     }
 }
