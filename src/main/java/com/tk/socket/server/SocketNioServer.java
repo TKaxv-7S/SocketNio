@@ -1,7 +1,7 @@
 package com.tk.socket.server;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.tk.socket.SocketEncodeDto;
+import com.tk.socket.SocketWrapMsgDto;
 import com.tk.socket.SocketException;
 import com.tk.socket.SocketMessageUtil;
 import com.tk.socket.SocketMsgDataDto;
@@ -11,7 +11,6 @@ import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
@@ -143,10 +142,10 @@ public class SocketNioServer extends AbstractSocketNioServer {
     }
 
     @Override
-    public SocketEncodeDto encode(Channel channel, byte[] data) {
+    public SocketWrapMsgDto encode(Channel channel, byte[] data) {
         SocketSecretDto secret = socketClientCache.getSecret(channel);
         if (secret != null) {
-            return new SocketEncodeDto(secret.encode(data), (byte) 0xFF);
+            return new SocketWrapMsgDto(secret.encode(data), (byte) 0xFF);
         }
         return null;
     }

@@ -5,7 +5,7 @@ import lombok.Data;
 import java.io.Serializable;
 
 @Data
-public class SocketEncodeDto implements Serializable {
+public class SocketWrapMsgDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -13,10 +13,10 @@ public class SocketEncodeDto implements Serializable {
 
     private byte secretByte;
 
-    public SocketEncodeDto() {
+    public SocketWrapMsgDto() {
     }
 
-    public SocketEncodeDto(byte[] data, byte secretByte) {
+    public SocketWrapMsgDto(byte[] data, byte secretByte) {
         this.data = data;
         this.secretByte = secretByte;
     }

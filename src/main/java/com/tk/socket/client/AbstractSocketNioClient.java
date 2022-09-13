@@ -54,7 +54,7 @@ public abstract class AbstractSocketNioClient {
 
     protected Consumer<AbstractSocketNioClient> connCallback;
 
-    private final AttributeKey<SocketMsgDto> msgKey = AttributeKey.valueOf("msg");
+    private final AttributeKey<SocketParseMsgDto> msgKey = AttributeKey.valueOf("msg");
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
@@ -124,7 +124,7 @@ public abstract class AbstractSocketNioClient {
         };
     }
 
-    public abstract SocketEncodeDto encode(byte[] data);
+    public abstract SocketWrapMsgDto encode(byte[] data);
 
     public abstract byte[] decode(byte[] data, byte secretByte);
 
@@ -133,8 +133,8 @@ public abstract class AbstractSocketNioClient {
     protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
         InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
-        Attribute<SocketMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
-        socketMsgDtoAttribute.setIfAbsent(new SocketMsgDto(msgSizeLimit, 30));
+        Attribute<SocketParseMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
+        socketMsgDtoAttribute.setIfAbsent(new SocketParseMsgDto(msgSizeLimit, 30));
         if (inetSocketAddress != null) {
             log.info("服务端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
         } else {
@@ -144,11 +144,11 @@ public abstract class AbstractSocketNioClient {
 
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
-        Attribute<SocketMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
-        SocketMsgDto socketMsgDto = socketMsgDtoAttribute.getAndSet(null);
+        Attribute<SocketParseMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
+        SocketParseMsgDto socketParseMsgDto = socketMsgDtoAttribute.getAndSet(null);
         try {
-            if (socketMsgDto != null) {
-                socketMsgDto.release();
+            if (socketParseMsgDto != null) {
+                socketParseMsgDto.release();
             }
         } catch (Exception e) {
             log.error("消息释放异常", e);
@@ -177,22 +177,22 @@ public abstract class AbstractSocketNioClient {
 
             Channel socketChannel = ctx.channel();
             ChannelId channelId = socketChannel.id();
-            Attribute<SocketMsgDto> socketMsgDtoAttribute = socketChannel.attr(msgKey);
+            Attribute<SocketParseMsgDto> socketMsgDtoAttribute = socketChannel.attr(msgKey);
             ByteBuf leftMsg = msg;
-            SocketMsgDto socketMsgDto = socketMsgDtoAttribute.get();
+            SocketParseMsgDto socketParseMsgDto = socketMsgDtoAttribute.get();
             try {
                 do {
-                    synchronized (socketMsgDto) {
-                        leftMsg = socketMsgDto.parsingMsg(leftMsg);
+                    synchronized (socketParseMsgDto) {
+                        leftMsg = socketParseMsgDto.parsingMsg(leftMsg);
                     }
-                    if (!socketMsgDto.getDone()) {
+                    if (!socketParseMsgDto.getDone()) {
                         break;
                     }
-                    Byte secretByte = socketMsgDto.getSecretByte();
+                    Byte secretByte = socketParseMsgDto.getSecretByte();
                     //读取完成，写入队列
                     byte[] decodeBytes;
                     try {
-                        decodeBytes = decode(socketMsgDto.getMsg(), secretByte);
+                        decodeBytes = decode(socketParseMsgDto.getMsg(), secretByte);
                     } catch (Exception e) {
                         log.debug("解码错误", e);
                         //丢弃并关闭连接
@@ -235,14 +235,14 @@ public abstract class AbstractSocketNioClient {
                             throw new SocketException("报文数据异常");
                         }
                     }
-                    socketMsgDto.clear();
+                    socketParseMsgDto.clear();
                 } while (leftMsg != null);
             } catch (SocketException e) {
                 log.error("数据解析异常：{}", e.getMessage());
                 //丢弃数据并关闭连接
                 socketChannel.close();
                 //异常丢弃
-                socketMsgDto.release();
+                socketParseMsgDto.release();
                 while (msg.refCnt() > 0) {
                     ReferenceCountUtil.release(msg);
                 }
@@ -251,7 +251,7 @@ public abstract class AbstractSocketNioClient {
                 //丢弃数据并关闭连接
                 socketChannel.close();
                 //异常丢弃
-                socketMsgDto.release();
+                socketParseMsgDto.release();
                 while (msg.refCnt() > 0) {
                     ReferenceCountUtil.release(msg);
                 }

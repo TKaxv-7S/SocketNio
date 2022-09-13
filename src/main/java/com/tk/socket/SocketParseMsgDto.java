@@ -10,7 +10,7 @@ import java.io.Serializable;
 import java.util.Optional;
 
 @Slf4j
-public class SocketMsgDto implements Serializable {
+public class SocketParseMsgDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -74,19 +74,19 @@ public class SocketMsgDto implements Serializable {
         return msgExpireTimeMillis;
     }
 
-    public SocketMsgDto(Integer sizeLimit, Integer msgExpireTimeMillis) {
+    public SocketParseMsgDto(Integer sizeLimit, Integer msgExpireTimeMillis) {
         this(ByteBufAllocator.DEFAULT.compositeBuffer(), null, sizeLimit, msgExpireTimeMillis);
     }
 
-    public SocketMsgDto(CompositeByteBuf full, Integer sizeLimit) {
+    public SocketParseMsgDto(CompositeByteBuf full, Integer sizeLimit) {
         this(full, null, sizeLimit, null);
     }
 
-    public SocketMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit) {
+    public SocketParseMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit) {
         this(full, size, sizeLimit, null);
     }
 
-    public SocketMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit, Integer msgExpireSeconds) {
+    public SocketParseMsgDto(CompositeByteBuf full, Integer size, Integer sizeLimit, Integer msgExpireSeconds) {
         this.size = size;
         this.full = full;
         this.sizeLimit = sizeLimit;
