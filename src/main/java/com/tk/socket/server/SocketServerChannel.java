@@ -63,4 +63,7 @@ public class SocketServerChannel implements Serializable {
         return socketNioServer.writeSync(data, seconds, channel);
     }
 
+    public SocketClientCache<? extends SocketSecretDto> getSocketClientCache() {
+        return socketNioServer.getSocketClientCache();
+    }
 }
