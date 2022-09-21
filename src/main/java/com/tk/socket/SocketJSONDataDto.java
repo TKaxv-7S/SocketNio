@@ -1,5 +1,6 @@
 package com.tk.socket;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.tk.socket.entity.Node;
@@ -55,6 +56,7 @@ public class SocketJSONDataDto implements Serializable {
         this.serverDataId = serverDataId;
     }
 
+    @JsonIgnore
     public Node<Object> getNodeData() {
         return nodeData;
     }
