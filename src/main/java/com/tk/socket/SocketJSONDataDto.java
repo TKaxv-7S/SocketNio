@@ -56,7 +56,6 @@ public class SocketJSONDataDto implements Serializable {
         this.serverDataId = serverDataId;
     }
 
-    @JsonIgnore
     public Node<Object> getNodeData() {
         return nodeData;
     }
@@ -69,10 +68,12 @@ public class SocketJSONDataDto implements Serializable {
         nodeData.setNode(data);
     }
 
+    @JsonIgnore
     public Object getData() {
         return nodeData.getNode();
     }
 
+    @JsonIgnore
     public <T> T getData(JavaType javaType) {
         Object node = nodeData.getNode();
         if (node == null) {
@@ -81,6 +82,7 @@ public class SocketJSONDataDto implements Serializable {
         return JsonUtil.parseObject(node, javaType);
     }
 
+    @JsonIgnore
     public <T> T getData(TypeReference<T> valueTypeRef) {
         Object node = nodeData.getNode();
         if (node == null) {
@@ -89,6 +91,7 @@ public class SocketJSONDataDto implements Serializable {
         return JsonUtil.parseObject(node, valueTypeRef);
     }
 
+    @JsonIgnore
     public <T> T getData(Class<T> clazz) {
         Object node = nodeData.getNode();
         if (node == null) {
