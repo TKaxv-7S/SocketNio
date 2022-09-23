@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.tk.socket.SocketException;
 import com.tk.socket.SocketMessageUtil;
 import com.tk.socket.SocketMsgDataDto;
-import com.tk.utils.JsonUtil;
+import com.tk.socket.utils.JsonUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
@@ -12,32 +12,31 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Slf4j
-public class SocketNioServer extends AbstractSocketNioServer {
+public abstract class SocketNioServer<T extends SocketClientCache<? extends SocketSecretDto>> extends AbstractSocketNioServer implements SocketNioServerWrite {
 
     private final SocketServerHandler socketServerHandler;
 
-    private final Map<Integer, SocketMsgDataDto> syncDataMap = new ConcurrentHashMap<>();
+    private final T socketClientCache;
 
-    private final SocketClientCache<? extends SocketSecretDto> socketClientCache;
+    private final Map<Integer, SocketMsgDataDto> syncDataMap = new ConcurrentHashMap<>();
 
     private final TypeReference<SocketMsgDataDto> socketDataDtoTypeReference = new TypeReference<SocketMsgDataDto>() {
     };
 
-    public SocketClientCache<? extends SocketSecretDto> getSocketClientCache() {
+    public T getSocketClientCache() {
         return socketClientCache;
     }
 
-    public SocketNioServer(SocketServerConfig config) {
+    public SocketNioServer(SocketServerConfig config, SocketServerHandler socketServerHandler, T socketClientCache) {
         super(config);
-        this.socketServerHandler = config.getSocketServerHandler();
-        this.socketClientCache = Optional.ofNullable(config.getSocketClientCache()).orElse(new SocketClientCache<>());
+        this.socketServerHandler = socketServerHandler;
+        this.socketClientCache = socketClientCache;
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {

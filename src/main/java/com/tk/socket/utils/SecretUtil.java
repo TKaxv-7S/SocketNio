@@ -1,4 +1,4 @@
-package com.tk.utils;
+package com.tk.socket.utils;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;

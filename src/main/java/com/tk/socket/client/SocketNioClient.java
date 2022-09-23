@@ -5,20 +5,19 @@ import com.tk.socket.SocketException;
 import com.tk.socket.SocketJSONDataDto;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.entity.SocketSecret;
-import com.tk.utils.JsonUtil;
+import com.tk.socket.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 @Slf4j
-public class SocketNioClient extends AbstractSocketNioClient {
+public abstract class SocketNioClient extends AbstractSocketNioClient {
 
     private final SocketClientHandler socketClientHandler;
 
@@ -26,63 +25,11 @@ public class SocketNioClient extends AbstractSocketNioClient {
 
     private final SocketSecret secret;
 
-    private final Heartbeat heartbeat;
-
-    private final byte[] heartbeatBytes = JsonUtil.toJsonString(SocketMsgDataDto.build("", null)).getBytes(StandardCharsets.UTF_8);
-
-    public void setHeartbeatInterval(Integer heartbeatInterval) {
-        heartbeat.setHeartbeatInterval(heartbeatInterval);
-    }
-
-    public Integer getHeartbeatInterval() {
-        return heartbeat.getHeartbeatInterval();
-    }
-
-    class Heartbeat extends Thread {
-
-        private Long heartbeatInterval;
-
-        public void setHeartbeatInterval(Integer heartbeatInterval) {
-            Integer oldHeartbeatInterval = this.getHeartbeatInterval();
-            this.heartbeatInterval = Math.max(Objects.isNull(heartbeatInterval) ? 30000L : heartbeatInterval * 1000L, 15000L);
-            log.info("socketNioClient心跳间隔时间已更新，旧：{}秒，新：{}秒", oldHeartbeatInterval, heartbeatInterval);
-        }
-
-        public Integer getHeartbeatInterval() {
-            return ((Long) (heartbeatInterval / 1000)).intValue();
-        }
-
-        public Heartbeat(Integer heartbeatInterval) {
-            this.heartbeatInterval = Math.max(Objects.isNull(heartbeatInterval) ? 30000L : heartbeatInterval * 1000L, 15000L);
-        }
-
-        @Override
-        public void run() {
-            Thread thread = Thread.currentThread();
-            while (!thread.isInterrupted()) {
-                try {
-                    write(heartbeatBytes);
-                } catch (Exception e) {
-                    log.warn("SocketNioClient心跳异常", e);
-                }
-                try {
-                    Thread.sleep(heartbeatInterval);
-                } catch (InterruptedException e) {
-                    log.warn("SocketNioClient心跳线程已关闭");
-                    return;
-                }
-            }
-            log.warn("SocketNioClient心跳线程已关闭");
-        }
-    }
-
     public SocketNioClient(SocketClientConfig config, SocketClientHandler socketClientHandler) {
         super(config);
         this.appKey = config.getAppKey().getBytes(StandardCharsets.UTF_8);
         this.secret = config.getSecret();
         this.socketClientHandler = socketClientHandler;
-        this.heartbeat = new Heartbeat(null);
-        super.connCallback = (client) -> heartbeat.start();
     }
 
     private final Map<Integer, SocketMsgDataDto> syncDataMap = new ConcurrentHashMap<>();
@@ -198,6 +145,5 @@ public class SocketNioClient extends AbstractSocketNioClient {
     @Override
     public void shutdownNow() {
         super.shutdownNow();
-        heartbeat.interrupt();
     }
 }

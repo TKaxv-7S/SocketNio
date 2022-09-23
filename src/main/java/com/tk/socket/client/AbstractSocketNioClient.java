@@ -1,7 +1,7 @@
 package com.tk.socket.client;
 
 import com.tk.socket.*;
-import com.tk.utils.JsonUtil;
+import com.tk.socket.utils.JsonUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -57,9 +58,15 @@ public abstract class AbstractSocketNioClient {
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
+    private final byte[] heartbeatBytes = JsonUtil.toJsonString(SocketMsgDataDto.build("", null)).getBytes(StandardCharsets.UTF_8);
+
+    private Long heartbeatInterval;
+
     public AbstractSocketNioClient(AbstractSocketClientConfig config) {
         this.config = config;
         this.msgSizeLimit = Optional.ofNullable(config.getMsgSizeLimit()).orElse(4 * 1024 * 1024);
+        Integer heartbeatInterval = config.getHeartbeatInterval();
+        this.heartbeatInterval = Math.max(Objects.isNull(heartbeatInterval) ? 30000L : heartbeatInterval * 1000L, 15000L);
         /*this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(10, TimeUnit.SECONDS)
                 .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
@@ -75,8 +82,9 @@ public abstract class AbstractSocketNioClient {
             try {
                 synchronized (lockObj) {
                     if (!getIsInit()) {
+                        NioEventLoopGroup nioEventLoopGroup = new NioEventLoopGroup(Math.max(config.getBossLoopThreadCount(), 3));
                         bootstrap = new Bootstrap()
-                                .group(new NioEventLoopGroup(Math.max(config.getBossLoopThreadCount(), 2)))
+                                .group(nioEventLoopGroup)
                                 .channel(NioSocketChannel.class)
                                 .handler(new ChannelInitializer<SocketChannel>() {
                                     @Override
@@ -106,7 +114,24 @@ public abstract class AbstractSocketNioClient {
                         }
 
                         channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
-                        log.info("SocketNioClient已连接，地址：{}，端口: {}", host, port);
+                        log.info("TCP客户端已连接，地址：{}，端口: {}", host, port);
+                        nioEventLoopGroup.execute(() -> {
+                            Thread thread = Thread.currentThread();
+                            while (!thread.isInterrupted()) {
+                                try {
+                                    write(heartbeatBytes);
+                                } catch (Exception e) {
+                                    log.warn("TCP客户端心跳异常", e);
+                                }
+                                try {
+                                    Thread.sleep(heartbeatInterval);
+                                } catch (InterruptedException e) {
+                                    log.warn("TCP客户端心跳线程已关闭");
+                                    return;
+                                }
+                            }
+                            log.warn("TCP客户端心跳线程已关闭");
+                        });
                         if (connCallback != null) {
                             connCallback.accept(this);
                         }
@@ -354,6 +379,16 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
+    public void setHeartbeatInterval(Integer heartbeatInterval) {
+        Integer oldHeartbeatInterval = getHeartbeatInterval();
+        this.heartbeatInterval = Math.max(Objects.isNull(heartbeatInterval) ? 30000L : heartbeatInterval * 1000L, 15000L);
+        log.info("TCP客户端心跳间隔时间已更新，旧：{}秒，新：{}秒", oldHeartbeatInterval, heartbeatInterval);
+    }
+
+    public Integer getHeartbeatInterval() {
+        return ((Long) (heartbeatInterval / 1000)).intValue();
+    }
+
     public void shutdownNow() {
         if (getIsInit()) {
             synchronized (lockObj) {
@@ -366,7 +401,7 @@ public abstract class AbstractSocketNioClient {
                         }
                         bootstrap = null;
                         socketMsgHandler = null;
-                        log.info("SocketNioClient已关闭");
+                        log.info("TCP客户端已关闭");
                     }
                 }
             }

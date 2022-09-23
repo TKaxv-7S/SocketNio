@@ -1,15 +1,15 @@
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import client.SocketClientDataHandler;
+import com.tk.socket.DefaultSocketNioClient;
+import com.tk.socket.DefaultSocketNioServer;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.client.SocketClientConfig;
-import com.tk.socket.client.SocketNioClient;
 import com.tk.socket.entity.SocketSecret;
 import com.tk.socket.server.SocketClientCache;
-import com.tk.socket.server.SocketNioServer;
 import com.tk.socket.server.SocketSecretDto;
 import com.tk.socket.server.SocketServerConfig;
-import com.tk.utils.SecretUtil;
+import com.tk.socket.utils.SecretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import server.SocketServerDataHandler;
@@ -41,10 +41,9 @@ public class TestMain {
         socketServerConfig.setMsgSizeLimit(null);
         socketServerConfig.setEventLoopThreadCount(10);
         socketServerConfig.setMaxHandlerDataThreadCount(4);
-        socketServerConfig.setSocketServerHandler(new SocketServerDataHandler());
-        SocketNioServer socketNioServer = new SocketNioServer(socketServerConfig);
+        DefaultSocketNioServer socketNioServer = new DefaultSocketNioServer(socketServerConfig, new SocketServerDataHandler());
         socketNioServer.initNioServerSync();
-        SocketClientCache<SocketSecretDto> socketClientCache = (SocketClientCache<SocketSecretDto>) socketNioServer.getSocketClientCache();
+        SocketClientCache<SocketSecretDto> socketClientCache = socketNioServer.getSocketClientCache();
         socketClientCache.addSecret(SocketSecretDto.build(
                 appKey,
                 socketSecret,
@@ -64,7 +63,7 @@ public class TestMain {
         socketClientConfig.setPoolMaxIdle(5);
         socketClientConfig.setPoolMinIdle(2);
         socketClientConfig.setPoolMaxWait(Duration.ofMillis(2000));
-        SocketNioClient socketNioClient = new SocketNioClient(socketClientConfig, new SocketClientDataHandler());
+        DefaultSocketNioClient socketNioClient = new DefaultSocketNioClient(socketClientConfig, new SocketClientDataHandler());
         socketNioClient.initNioClientSync();
 
         Thread.sleep(1000);

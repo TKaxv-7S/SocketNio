@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.tk.socket.entity.Node;
-import com.tk.utils.JsonUtil;
+import com.tk.socket.utils.JsonUtil;
 
 import java.io.Serializable;
 

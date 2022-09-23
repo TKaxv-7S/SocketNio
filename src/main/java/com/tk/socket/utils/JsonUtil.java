@@ -1,4 +1,4 @@
-package com.tk.utils;
+package com.tk.socket.utils;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonFactory;

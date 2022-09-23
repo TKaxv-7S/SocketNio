@@ -20,7 +20,7 @@ public class SocketServerChannel implements Serializable {
      */
     private Channel channel;
 
-    private SocketNioServer socketNioServer;
+    private SocketNioServerWrite socketNioServerWrite;
 
     public ChannelId getChannelId() {
         return channelId;
@@ -33,37 +33,33 @@ public class SocketServerChannel implements Serializable {
     public SocketServerChannel() {
     }
 
-    public SocketServerChannel(Channel channel, SocketNioServer socketNioServer) {
+    public SocketServerChannel(Channel channel, SocketNioServerWrite socketNioServerWrite) {
         this.channelId = channel.id();
         this.channel = channel;
-        this.socketNioServer = socketNioServer;
+        this.socketNioServerWrite = socketNioServerWrite;
     }
 
-    public static SocketServerChannel build(Channel channel, SocketNioServer socketNioServer) {
-        return new SocketServerChannel(channel, socketNioServer);
+    public static SocketServerChannel build(Channel channel, SocketNioServerWrite socketNioServerWrite) {
+        return new SocketServerChannel(channel, socketNioServerWrite);
     }
 
     public void write(SocketMsgDataDto data) {
-        socketNioServer.write(data, channel);
+        socketNioServerWrite.write(data, channel);
     }
 
     public boolean writeAck(SocketMsgDataDto data) {
-        return socketNioServer.writeAck(data, channel);
+        return socketNioServerWrite.writeAck(data, channel);
     }
 
     public boolean writeAck(SocketMsgDataDto data, int seconds) {
-        return socketNioServer.writeAck(data, channel, seconds);
+        return socketNioServerWrite.writeAck(data, channel, seconds);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
-        return socketNioServer.writeSync(data, 10, channel);
+        return socketNioServerWrite.writeSync(data, 10, channel);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
-        return socketNioServer.writeSync(data, seconds, channel);
-    }
-
-    public SocketClientCache<? extends SocketSecretDto> getSocketClientCache() {
-        return socketNioServer.getSocketClientCache();
+        return socketNioServerWrite.writeSync(data, seconds, channel);
     }
 }

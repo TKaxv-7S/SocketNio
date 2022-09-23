@@ -165,7 +165,7 @@ public class SocketParseMsgDto implements Serializable {
             } else if (i < 0) {
                 //此处粘包了，手动切割
                 full.addComponent(true, msg.readSlice(leftDataLength));
-                stickMsg = msg.retainedSlice();
+                stickMsg = msg.readRetainedSlice(-i);
             } else {
                 full.addComponent(true, msg);
             }

@@ -23,6 +23,8 @@ public abstract class AbstractSocketClientConfig implements Serializable {
 
     private int maxHandlerDataThreadCount;
 
+    private Integer heartbeatInterval;
+
     private Duration poolMaxWait = DEFAULT_MAX_WAIT;
 
     private int poolMaxTotal = DEFAULT_MAX_TOTAL;
@@ -69,6 +71,14 @@ public abstract class AbstractSocketClientConfig implements Serializable {
 
     public void setMaxHandlerDataThreadCount(int maxHandlerDataThreadCount) {
         this.maxHandlerDataThreadCount = maxHandlerDataThreadCount;
+    }
+
+    public Integer getHeartbeatInterval() {
+        return heartbeatInterval;
+    }
+
+    public void setHeartbeatInterval(Integer heartbeatInterval) {
+        this.heartbeatInterval = heartbeatInterval;
     }
 
     public Duration getPoolMaxWait() {
