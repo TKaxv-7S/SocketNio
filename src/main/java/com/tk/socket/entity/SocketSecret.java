@@ -28,15 +28,12 @@ public class SocketSecret {
 
     public ByteBuf encode(ByteBuf byteBuf) {
         ByteBuffer byteBuffer = toNioBuffer(byteBuf);
-        ByteBuffer byteBuffer1 = encode.encode(byteBuffer);
-        log.debug("encode:{}", byteBuffer1.array());
-        return Unpooled.wrappedBuffer(byteBuffer1);
+        return Unpooled.wrappedBuffer(encode.encode(byteBuffer));
     }
 
     public ByteBuf decode(ByteBuf byteBuf) {
         ByteBuffer byteBuffer = toNioBuffer(byteBuf);
         ByteBuffer byteBuffer1 = decode.decode(byteBuffer);
-        log.debug("decode:{}", byteBuffer1.array());
         return Unpooled.wrappedBuffer(byteBuffer1);
     }
 
@@ -51,15 +48,19 @@ public class SocketSecret {
     }
 
     public static ByteBuffer toNioBuffer(ByteBuf byteBuf) {
-        if (byteBuf.isDirect()) {
-            return byteBuf.nioBuffer();
-        }
         byte[] bytes = new byte[byteBuf.writerIndex()];
         byteBuf.getBytes(0, bytes);
-        log.debug("bytes:{}", bytes);
-        ByteBuffer byteBuffer = ByteBuffer.allocate(byteBuf.writerIndex());
+        log.debug("toNioBuffer before:{}", bytes);
+        ByteBuffer byteBuffer;
+        if (byteBuf.isDirect()) {
+            byteBuffer = byteBuf.nioBuffer();
+        } else {
+            byteBuffer = ByteBuffer.allocate(byteBuf.writerIndex());
+        }
         byteBuf.getBytes(0, byteBuffer);
-        log.debug("byteBuffer:{}", byteBuffer.array());
+        byte[] oo = new byte[byteBuffer.remaining()];
+        byteBuffer.get(oo);
+        log.debug("toNioBuffer:{}", oo);
         return byteBuffer;
     }
 
