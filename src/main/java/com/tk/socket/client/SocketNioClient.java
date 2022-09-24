@@ -6,6 +6,8 @@ import com.tk.socket.SocketJSONDataDto;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.entity.SocketSecret;
 import com.tk.socket.utils.JsonUtil;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -42,15 +44,15 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
     }
 
     public void write(SocketJSONDataDto data) {
-        write(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+        write(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
     }
 
     public boolean writeAck(SocketJSONDataDto data) {
-        return writeAck(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+        return writeAck(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
     }
 
     public boolean writeAck(SocketJSONDataDto data, int seconds) {
-        return writeAck(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8), seconds);
+        return writeAck(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), seconds);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
@@ -70,7 +72,7 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+                write(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -133,12 +135,12 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public SocketClientWrapMsgDto encode(byte[] data) {
+    public SocketClientWrapMsgDto encode(ByteBuf data) {
         return new SocketClientWrapMsgDto(secret.encode(data), appKey, (byte) 0xFF);
     }
 
     @Override
-    public byte[] decode(byte[] data, byte secretByte) {
+    public ByteBuf decode(ByteBuf data, byte secretByte) {
         return secret.decode(data);
     }
 

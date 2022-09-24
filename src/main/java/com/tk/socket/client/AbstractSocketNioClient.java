@@ -4,6 +4,7 @@ import com.tk.socket.*;
 import com.tk.socket.utils.JsonUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -115,23 +116,23 @@ public abstract class AbstractSocketNioClient {
 
                         channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
                         log.info("TCP客户端已连接，地址：{}，端口: {}", host, port);
-                        nioEventLoopGroup.execute(() -> {
+                        /*nioEventLoopGroup.execute(() -> {
                             Thread thread = Thread.currentThread();
                             while (!thread.isInterrupted()) {
                                 try {
-                                    write(heartbeatBytes);
+                                    write(Unpooled.wrappedBuffer(heartbeatBytes));
                                 } catch (Exception e) {
                                     log.warn("TCP客户端心跳异常", e);
                                 }
                                 try {
-                                    Thread.sleep(heartbeatInterval);
+                                    Thread.sleep(this.heartbeatInterval);
                                 } catch (InterruptedException e) {
                                     log.warn("TCP客户端心跳线程已关闭");
                                     return;
                                 }
                             }
                             log.warn("TCP客户端心跳线程已关闭");
-                        });
+                        });*/
                         if (connCallback != null) {
                             connCallback.accept(this);
                         }
@@ -148,9 +149,9 @@ public abstract class AbstractSocketNioClient {
         };
     }
 
-    public abstract SocketClientWrapMsgDto encode(byte[] data);
+    public abstract SocketClientWrapMsgDto encode(ByteBuf data);
 
-    public abstract byte[] decode(byte[] data, byte secretByte);
+    public abstract ByteBuf decode(ByteBuf data, byte secretByte);
 
     public abstract Consumer<byte[]> setDataConsumer();
 
@@ -214,7 +215,7 @@ public abstract class AbstractSocketNioClient {
                     }
                     Byte secretByte = socketParseMsgDto.getSecretByte();
                     //读取完成，写入队列
-                    byte[] decodeBytes;
+                    ByteBuf decodeBytes;
                     try {
                         decodeBytes = decode(socketParseMsgDto.getMsg(), secretByte);
                     } catch (Exception e) {
@@ -223,7 +224,7 @@ public abstract class AbstractSocketNioClient {
                         throw new SocketException("报文解码错误");
                     }
 
-                    int length = decodeBytes.length;
+                    int length = decodeBytes.writerIndex();
                     boolean sendOrReceiveAck = SocketMessageUtil.isAckData(decodeBytes);
                     if (length > 3) {
                         log.debug("数据已接收，channelId：{}", channelId);
@@ -288,19 +289,21 @@ public abstract class AbstractSocketNioClient {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             //TODO 优化
-            byte[] data;
-            if (msg instanceof byte[]) {
-                data = (byte[]) msg;
+            ByteBuf data;
+            if (msg instanceof ByteBuf) {
+                data = (ByteBuf) msg;
+            } else if (msg instanceof byte[]) {
+                data = Unpooled.wrappedBuffer((byte[]) msg);
             } else {
-                //传输其他类型数据时暂不支持ACK，需使用byte[]
-                data = SocketMessageUtil.packageData(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8), false);
+                //传输其他类型数据时暂不支持ACK，需使用ByteBuf或byte[]
+                data = SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8)), false);
             }
             ctx.writeAndFlush(encode(data).getWrapMsg(), promise);
             log.debug("数据已发送，channelId：{}", ctx.channel().id());
         }
     }
 
-    public void write(byte[] data) {
+    public void write(ByteBuf data) {
         if (!getIsInit()) {
             initNioClientSync();
         }
@@ -312,15 +315,15 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
-    public boolean writeAck(byte[] data, int seconds) {
+    public boolean writeAck(ByteBuf data, int seconds) {
         if (!getIsInit()) {
             initNioClientSync();
         }
         Channel channel = channelPool.borrowChannel();
         try {
             seconds = Math.min(seconds, 10);
-            byte[] packageData = SocketMessageUtil.packageData(data, true);
-            byte[] needAckBytes = {(byte) (packageData[0] & (byte) 0x7F), packageData[1], packageData[2]};
+            ByteBuf packageData = SocketMessageUtil.packageData(data, true);
+            byte[] needAckBytes = {(byte) (packageData.getByte(0) & (byte) 0x7F), packageData.getByte(1), packageData.getByte(2)};
             int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
             String key = Integer.toString(ackKey).concat(channel.id().asShortText());
             try {
@@ -348,7 +351,7 @@ public abstract class AbstractSocketNioClient {
         }
     }
 
-    public boolean writeAck(byte[] data) {
+    public boolean writeAck(ByteBuf data) {
         return writeAck(data, 10);
     }
 

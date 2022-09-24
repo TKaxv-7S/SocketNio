@@ -1,5 +1,6 @@
 package com.tk.socket;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
@@ -33,12 +34,15 @@ public class SocketMsgHandler {
 
     }
 
-    public void putData(ChannelHandlerContext channel, byte[] data) throws InterruptedException {
+    public void putData(ChannelHandlerContext channel, ByteBuf data) throws InterruptedException {
+        //TODO 检查
+        byte[] bytes = new byte[data.writerIndex()];
+        data.getBytes(0, bytes);
         //如果队列已满，需阻塞
-        dataConsumerThreadPoolExecutor.execute(() -> dataConsumer.accept(channel, data));
+        dataConsumerThreadPoolExecutor.execute(() -> dataConsumer.accept(channel, bytes));
     }
 
-    public void write(Channel socketChannel, byte[] data) {
+    public void write(Channel socketChannel, ByteBuf data) {
         try {
             socketChannel.writeAndFlush(SocketMessageUtil.packageData(data, false));
         } catch (Exception e) {
@@ -55,9 +59,9 @@ public class SocketMsgHandler {
      * @param seconds
      * @return
      */
-    public boolean writeAck(Channel socketChannel, byte[] data, int seconds) {
-        byte[] packageData = SocketMessageUtil.packageData(data, true);
-        byte[] needAckBytes = {(byte) (packageData[0] & (byte) 0x7F), packageData[1], packageData[2]};
+    public boolean writeAck(Channel socketChannel, ByteBuf data, int seconds) {
+        ByteBuf packageData = SocketMessageUtil.packageData(data, true);
+        byte[] needAckBytes = {(byte) (packageData.getByte(0) & (byte) 0x7F), packageData.getByte(1), packageData.getByte(2)};
         int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
         String key = Integer.toString(ackKey).concat(socketChannel.id().asShortText());
         try {

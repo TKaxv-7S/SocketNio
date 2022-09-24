@@ -17,7 +17,7 @@ public class SocketParseMsgDto implements Serializable {
     public static final byte DATA_START_BYTE = (byte) 0xA5;
 
     //身部
-    private byte[] msg;
+    private ByteBuf msg;
 
     //加密字节
     private Byte secretByte;
@@ -38,7 +38,7 @@ public class SocketParseMsgDto implements Serializable {
 
     private final Long msgExpireTimeMillis;
 
-    public byte[] getMsg() {
+    public ByteBuf getMsg() {
         return msg;
     }
 
@@ -174,8 +174,8 @@ public class SocketParseMsgDto implements Serializable {
             throw new SocketException("报文数据异常");
         }
         checkMsgTail();
-        this.msg = new byte[size - 8];
-        full.getBytes(5, this.msg);
+        //TODO 检查
+        this.msg = full.slice(5, size - 8);
         isDone = true;
         return stickMsg;
     }

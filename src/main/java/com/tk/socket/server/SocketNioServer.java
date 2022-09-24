@@ -5,6 +5,8 @@ import com.tk.socket.SocketException;
 import com.tk.socket.SocketMessageUtil;
 import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.utils.JsonUtil;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
@@ -40,15 +42,15 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {
-        write(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+        write(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
     }
 
     public boolean writeAck(SocketMsgDataDto data, Channel channel) {
-        return writeAck(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+        return writeAck(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
     }
 
     public boolean writeAck(SocketMsgDataDto data, Channel channel, int seconds) {
-        return writeAck(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8), seconds);
+        return writeAck(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), seconds);
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data, Channel channel) {
@@ -65,7 +67,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(channel, JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8));
+                write(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -140,7 +142,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
     }
 
     @Override
-    public SocketServerWrapMsgDto encode(Channel channel, byte[] data) {
+    public SocketServerWrapMsgDto encode(Channel channel, ByteBuf data) {
         SocketSecretDto secret = socketClientCache.getSecret(channel);
         if (secret != null) {
             return new SocketServerWrapMsgDto(secret.encode(data), (byte) 0xFF);
@@ -149,20 +151,20 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
     }
 
     @Override
-    public byte[] decode(Channel channel, byte[] data, byte secretByte) {
+    public ByteBuf decode(Channel channel, ByteBuf data, byte secretByte) {
         int appKeyLength = SocketMessageUtil.byteArrayToInt(data);
         String appKey = socketClientCache.getAppKey(channel);
         if (appKey == null) {
             byte[] appKeyBytes = new byte[appKeyLength];
-            System.arraycopy(data, 4, appKeyBytes, 0, appKeyLength);
+            //TODO 检查
+            data.getBytes(4, appKeyBytes);
             appKey = new String(appKeyBytes, StandardCharsets.UTF_8);
             SocketSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
-                int length = data.length - index;
-                byte[] decode = new byte[length];
-                System.arraycopy(data, index, decode, 0, length);
-                byte[] bytes = secret.decode(decode);
+                //TODO 检查
+                ByteBuf decode = data.slice(index, data.writerIndex() - index);
+                ByteBuf bytes = secret.decode(decode);
                 if (!socketClientCache.addClientChannel(appKey, channel, this)) {
                     log.error("appKey：{}，客户端连接数超出限制", appKey);
                     throw new SocketException("客户端连接数超出限制");
@@ -173,9 +175,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
             SocketSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
-                int length = data.length - index;
-                byte[] decode = new byte[length];
-                System.arraycopy(data, index, decode, 0, length);
+                ByteBuf decode = data.slice(index, data.writerIndex() - index);
                 return secret.decode(decode);
             }
         }

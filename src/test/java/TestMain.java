@@ -29,8 +29,8 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
-        SocketSecret.Encrypt encode = SecretUtil.getAESEncryptCipher(secretBytes)::doFinal;
-        SocketSecret.Decrypt decode = SecretUtil.getAESDecryptCipher(secretBytes)::doFinal;
+        SocketSecret.Encrypt encode = SecretUtil.getAESEncrypt(secretBytes);
+        SocketSecret.Decrypt decode = SecretUtil.getAESDecrypt(secretBytes);
         SocketSecret socketSecret = new SocketSecret(encode, decode);
         int serverPort = 8089;
 

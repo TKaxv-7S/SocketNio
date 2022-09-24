@@ -19,8 +19,8 @@ public class SocketServerWrapMsgDto implements Serializable {
         return wrapMsg;
     }
 
-    public SocketServerWrapMsgDto(byte[] data, byte secretByte) {
-        int msgSize = data.length + 8;
+    public SocketServerWrapMsgDto(ByteBuf data, byte secretByte) {
+        int msgSize = data.writerIndex() + 8;
         byte msgSizeFirstByte = (byte) (msgSize >>> 24);
         byte[] headBytes = {
                 DATA_START_BYTE,
@@ -29,8 +29,20 @@ public class SocketServerWrapMsgDto implements Serializable {
                 (byte) (msgSize >>> 8),
                 (byte) msgSize
         };
-        byte[] bytes = {msgSizeFirstByte, DATA_START_BYTE, secretByte};
-        this.wrapMsg = Unpooled.wrappedBuffer(headBytes, data, bytes);
+        this.wrapMsg = Unpooled.wrappedBuffer(
+                Unpooled.wrappedBuffer(new byte[]{
+                        DATA_START_BYTE,
+                        msgSizeFirstByte,
+                        (byte) (msgSize >>> 16),
+                        (byte) (msgSize >>> 8),
+                        (byte) msgSize
+                }),
+                data,
+                Unpooled.wrappedBuffer(new byte[]{
+                        msgSizeFirstByte,
+                        DATA_START_BYTE,
+                        secretByte})
+        );
         wrapMsg.setByte(msgSize - 2, wrapMsg.getByte(msgSize / 2));
     }
 

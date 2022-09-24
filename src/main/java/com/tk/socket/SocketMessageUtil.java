@@ -1,5 +1,7 @@
 package com.tk.socket;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ThreadLocalRandom;
@@ -9,20 +11,24 @@ public class SocketMessageUtil {
 
     private static final byte dataStartByte = (byte) 0xA5;
 
-    public static byte[] packageMsg(byte[] encode, byte secretByte) {
-        int length = encode.length;
-        int msgSize = length + 8;
-        byte[] packageMsg = new byte[msgSize];
-        System.arraycopy(encode, 0, packageMsg, 5, length);
-        packageMsg[0] = dataStartByte;
+    public static ByteBuf packageMsg(ByteBuf encode, byte secretByte) {
+        int msgSize = encode.writerIndex() + 8;
         byte msgSizeFirstByte = (byte) (msgSize >>> 24);
-        packageMsg[1] = msgSizeFirstByte;
-        packageMsg[2] = (byte) (msgSize >>> 16);
-        packageMsg[3] = (byte) (msgSize >>> 8);
-        packageMsg[4] = (byte) msgSize;
-        packageMsg[msgSize - 3] = msgSizeFirstByte;
-        packageMsg[msgSize - 2] = packageMsg[msgSize / 2];
-        packageMsg[msgSize - 1] = secretByte;
+        ByteBuf packageMsg = Unpooled.wrappedBuffer(
+                Unpooled.wrappedBuffer(new byte[]{
+                        dataStartByte,
+                        msgSizeFirstByte,
+                        (byte) (msgSize >>> 16),
+                        (byte) (msgSize >>> 8),
+                        (byte) msgSize}),
+                encode,
+                Unpooled.wrappedBuffer(new byte[]{
+                        msgSizeFirstByte,
+                        dataStartByte,
+                        secretByte})
+        );
+        //TODO 检查
+        packageMsg.setByte(msgSize - 2, packageMsg.getByte(msgSize / 2));
         /*if (log.isDebugEnabled()) {
             log.debug("封装报文 长度：{}，头部：{},{},{},{},{}，尾部：{},{},{}"
                     , msgSize
@@ -46,47 +52,40 @@ public class SocketMessageUtil {
                 (byteArray[2] & 0xFF);
     }
 
-    public static byte[] packageData(byte[] data, boolean isAck) {
-        int length = data.length;
-        byte[] packageData = new byte[length + 3];
-        System.arraycopy(data, 0, packageData, 3, length);
+    public static ByteBuf packageData(ByteBuf data, boolean isAck) {
+        ByteBuf ackData = Unpooled.buffer(3);
         int nextInt = ThreadLocalRandom.current().nextInt();
         if (isAck) {
-            packageData[0] = (byte) ((byte) 0x80 | (byte) (nextInt >>> 25));
+            ackData.writeByte((byte) 0x80 | (byte) (nextInt >>> 25));
         } else {
-            packageData[0] = (byte) ((byte) 0x00 | (byte) (nextInt >>> 25));
+            ackData.writeByte(((byte) 0x00 | (byte) (nextInt >>> 25)));
         }
-        packageData[1] = (byte) (nextInt >>> 16);
-        packageData[2] = (byte) (nextInt);
-        return packageData;
+        ackData.writeByte(nextInt >>> 16);
+        ackData.writeByte(nextInt);
+        return Unpooled.wrappedBuffer(ackData, data);
     }
 
-    public static byte[] unPackageData(byte[] packageData) {
-        int length = packageData.length - 3;
-        byte[] data = new byte[length];
-        System.arraycopy(packageData, 3, data, 0, length);
-        return data;
+    public static ByteBuf unPackageData(ByteBuf packageData) {
+        //TODO 检查
+        return packageData.slice(3, packageData.writerIndex() - 3);
     }
 
-    public static byte[] getAckData(byte[] packageData) {
+    public static byte[] getAckData(ByteBuf packageData) {
         byte[] ackBytes = new byte[3];
         //把第一位设置成0，即无需接收端再ack
-        ackBytes[0] = (byte) (packageData[0] & (byte) 0x7F);
-        ackBytes[1] = packageData[1];
-        ackBytes[2] = packageData[2];
+        ackBytes[0] = (byte) (packageData.getByte(0) & (byte) 0x7F);
+        ackBytes[1] = packageData.getByte(1);
+        ackBytes[2] = packageData.getByte(2);
         return ackBytes;
     }
 
-    public static boolean isAckData(byte[] packageData) {
+    public static boolean isAckData(ByteBuf packageData) {
         //获取ack
-        return (byte) 0x01 == (byte) ((packageData[0] & 0xFF) >>> 7);
+        return (byte) 0x01 == (byte) ((packageData.getByte(0) & 0xFF) >>> 7);
     }
 
-    public static int byteArrayToInt(byte[] byteArray) {
-        return ((byteArray[0] & 0xFF) << 24) |
-                ((byteArray[1] & 0xFF) << 16) |
-                ((byteArray[2] & 0xFF) << 8) |
-                (byteArray[3] & 0xFF);
+    public static int byteArrayToInt(ByteBuf byteArray) {
+        return byteArray.getInt(0);
     }
 
     public static byte[] intToByteArray(int intValue) {

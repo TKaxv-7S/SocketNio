@@ -19,25 +19,33 @@ public class SocketClientWrapMsgDto implements Serializable {
         return wrapMsg;
     }
 
-    public SocketClientWrapMsgDto(byte[] data, byte[] appKeyBytes, byte secretByte) {
+    public SocketClientWrapMsgDto(ByteBuf data, byte[] appKeyBytes, byte secretByte) {
         int appKeyBytesLength = appKeyBytes.length;
-        byte[] appKeyLenBytes = new byte[]{
-                (byte) ((appKeyBytesLength >> 24) & 0xFF),
-                (byte) ((appKeyBytesLength >> 16) & 0xFF),
-                (byte) ((appKeyBytesLength >> 8) & 0xFF),
-                (byte) (appKeyBytesLength & 0xFF)
-        };
-        int msgSize = appKeyLenBytes.length + appKeyBytesLength + data.length + 8;
+        int msgSize = 12 + appKeyBytesLength + data.writerIndex();
         byte msgSizeFirstByte = (byte) (msgSize >>> 24);
-        byte[] headBytes = {
-                DATA_START_BYTE,
-                msgSizeFirstByte,
-                (byte) (msgSize >>> 16),
-                (byte) (msgSize >>> 8),
-                (byte) msgSize
-        };
-        byte[] bytes = {msgSizeFirstByte, DATA_START_BYTE, secretByte};
-        this.wrapMsg = Unpooled.wrappedBuffer(headBytes, appKeyLenBytes, appKeyBytes, data, bytes);
+        this.wrapMsg = Unpooled.wrappedBuffer(
+                //TODO 检查
+                Unpooled.wrappedBuffer(
+                        new byte[]{
+                                DATA_START_BYTE,
+                                msgSizeFirstByte,
+                                (byte) (msgSize >>> 16),
+                                (byte) (msgSize >>> 8),
+                                (byte) msgSize,
+                                (byte) ((appKeyBytesLength >> 24) & 0xFF),
+                                (byte) ((appKeyBytesLength >> 16) & 0xFF),
+                                (byte) ((appKeyBytesLength >> 8) & 0xFF),
+                                (byte) (appKeyBytesLength & 0xFF)}
+                        , appKeyBytes
+                )
+                , data
+                , Unpooled.wrappedBuffer(
+                        new byte[]{
+                                msgSizeFirstByte,
+                                DATA_START_BYTE,
+                                secretByte
+                        }
+                ));
         wrapMsg.setByte(msgSize - 2, wrapMsg.getByte(msgSize / 2));
     }
 

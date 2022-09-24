@@ -1,6 +1,7 @@
 package com.tk.socket.server;
 
 import com.tk.socket.entity.SocketSecret;
+import io.netty.buffer.ByteBuf;
 
 import java.io.Serializable;
 
@@ -52,11 +53,11 @@ public class SocketSecretDto implements Serializable {
         return heartbeatTimeout;
     }
 
-    public byte[] encode(byte[] data) {
+    public ByteBuf encode(ByteBuf data) {
         return secret.encode(data);
     }
 
-    public byte[] decode(byte[] data) {
+    public ByteBuf decode(ByteBuf data) {
         return secret.decode(data);
     }
 
