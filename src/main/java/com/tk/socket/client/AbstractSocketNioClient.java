@@ -288,7 +288,6 @@ public abstract class AbstractSocketNioClient {
     class ClientOutHandler extends ChannelOutboundHandlerAdapter {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            //TODO 优化
             ByteBuf data;
             if (msg instanceof ByteBuf) {
                 data = (ByteBuf) msg;

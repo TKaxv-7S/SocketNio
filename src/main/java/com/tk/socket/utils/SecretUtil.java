@@ -50,9 +50,9 @@ public class SecretUtil {
     public static SocketEncrypt getEncrypt(Cipher cipher) {
         return data -> {
             try {
-                if (data == null || !data.hasRemaining()) {
+                /*if (data == null || !data.hasRemaining()) {
                     return data;
-                }
+                }*/
                 ByteBuffer encrypted;
                 synchronized (cipher) {
                     encrypted = ByteBuffer.allocate(cipher.getOutputSize(data.remaining()));
@@ -69,9 +69,9 @@ public class SecretUtil {
     public static SocketDecrypt getDecrypt(Cipher cipher) {
         return data -> {
             try {
-                if (data == null || !data.hasRemaining()) {
+                /*if (data == null || !data.hasRemaining()) {
                     return data;
-                }
+                }*/
                 ByteBuffer decrypted;
                 synchronized (cipher) {
                     decrypted = ByteBuffer.allocate(cipher.getOutputSize(data.remaining()));

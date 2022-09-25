@@ -282,7 +282,6 @@ public abstract class AbstractSocketNioServer {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            //TODO 优化
             ByteBuf data;
             if (msg instanceof ByteBuf) {
                 data = (ByteBuf) msg;

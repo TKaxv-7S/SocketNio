@@ -27,7 +27,6 @@ public class SocketMessageUtil {
                         dataStartByte,
                         secretByte})
         );
-        //TODO 检查
         packageMsg.setByte(msgSize - 2, packageMsg.getByte(msgSize / 2));
         /*if (log.isDebugEnabled()) {
             log.debug("封装报文 长度：{}，头部：{},{},{},{},{}，尾部：{},{},{}"

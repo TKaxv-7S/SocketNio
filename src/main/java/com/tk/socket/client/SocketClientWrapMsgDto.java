@@ -24,7 +24,6 @@ public class SocketClientWrapMsgDto implements Serializable {
         int msgSize = 12 + appKeyBytesLength + data.writerIndex();
         byte msgSizeFirstByte = (byte) (msgSize >>> 24);
         this.wrapMsg = Unpooled.wrappedBuffer(
-                //TODO 检查
                 Unpooled.wrappedBuffer(
                         new byte[]{
                                 DATA_START_BYTE,

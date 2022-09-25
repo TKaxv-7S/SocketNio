@@ -4,58 +4,61 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 import java.nio.ByteBuffer;
+import java.util.function.Supplier;
 
 public class SocketSecret {
 
-    private final SocketEncrypt encrypt;
+    private final LoopArray<SocketEncrypt> encryptArray;
 
-    public SocketEncrypt getEncrypt() {
-        return encrypt;
+    public SocketEncrypt getEncryptArray() {
+        return encryptArray.getByLoop();
     }
 
-    private final SocketDecrypt decrypt;
+    private final LoopArray<SocketDecrypt> decryptArray;
 
-    public SocketDecrypt getDecrypt() {
-        return decrypt;
+    public SocketDecrypt getDecryptArray() {
+        return decryptArray.getByLoop();
     }
 
     private final GetEncrypt getEncrypt;
 
     public SocketEncrypt getNewEncrypt() {
-        return getEncrypt.getEncrypt();
+        return getEncrypt.get();
     }
 
     private final GetDecrypt getDecrypt;
 
     public SocketDecrypt getNewDecrypt() {
-        return getDecrypt.getDecrypt();
+        return getDecrypt.get();
     }
 
     public SocketSecret(GetEncrypt getEncrypt, GetDecrypt getDecrypt) {
+        this(getEncrypt, getDecrypt, 2);
+    }
+
+    public SocketSecret(GetEncrypt getEncrypt, GetDecrypt getDecrypt, int secretSize) {
         this.getEncrypt = getEncrypt;
-        this.encrypt = getEncrypt.getEncrypt();
+        this.encryptArray = new LoopArray<>(getEncrypt, secretSize);
         this.getDecrypt = getDecrypt;
-        this.decrypt = getDecrypt.getDecrypt();
+        this.decryptArray = new LoopArray<>(getDecrypt, secretSize);
     }
 
     public ByteBuf encode(ByteBuf byteBuf) {
-        //TODO 优化修改
-        return Unpooled.wrappedBuffer(encrypt.encode(toNioBuffer(byteBuf)));
+        return Unpooled.wrappedBuffer(encryptArray.getByLoop().encode(toNioBuffer(byteBuf)));
     }
 
     public ByteBuf decode(ByteBuf byteBuf) {
-        //TODO 优化修改
-        return Unpooled.wrappedBuffer(decrypt.decode(toNioBuffer(byteBuf)));
+        return Unpooled.wrappedBuffer(decryptArray.getByLoop().decode(toNioBuffer(byteBuf)));
     }
 
     @FunctionalInterface
-    public interface GetEncrypt {
-        SocketEncrypt getEncrypt();
+    public interface GetEncrypt extends Supplier<SocketEncrypt> {
+        SocketEncrypt get();
     }
 
     @FunctionalInterface
-    public interface GetDecrypt {
-        SocketDecrypt getDecrypt();
+    public interface GetDecrypt extends Supplier<SocketDecrypt> {
+        SocketDecrypt get();
     }
 
     public static ByteBuffer toNioBuffer(ByteBuf byteBuf) {
