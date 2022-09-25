@@ -1,7 +1,8 @@
 package com.tk.socket.utils;
 
 import com.tk.socket.SocketException;
-import com.tk.socket.entity.SocketSecret;
+import com.tk.socket.entity.SocketDecrypt;
+import com.tk.socket.entity.SocketEncrypt;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.crypto.Cipher;
@@ -36,25 +37,28 @@ public class SecretUtil {
         return cipher;
     }
 
-    public static SocketSecret.Encrypt getAESEncrypt(byte[] secretBytes) {
+    public static SocketEncrypt getAESEncrypt(byte[] secretBytes) {
         Cipher cipher = getAESEncryptCipher(secretBytes);
         return getEncrypt(cipher);
     }
 
-    public static SocketSecret.Decrypt getAESDecrypt(byte[] secretBytes) {
+    public static SocketDecrypt getAESDecrypt(byte[] secretBytes) {
         Cipher cipher = getAESDecryptCipher(secretBytes);
         return getDecrypt(cipher);
     }
 
-    public static SocketSecret.Encrypt getEncrypt(Cipher cipher) {
+    public static SocketEncrypt getEncrypt(Cipher cipher) {
         return data -> {
             try {
+                if (data == null || !data.hasRemaining()) {
+                    return data;
+                }
                 ByteBuffer encrypted;
                 synchronized (cipher) {
                     encrypted = ByteBuffer.allocate(cipher.getOutputSize(data.remaining()));
                     cipher.doFinal(data, encrypted);
                 }
-                encrypted.rewind();
+                encrypted.flip();
                 return encrypted;
             } catch (Exception e) {
                 throw new SocketException(e, e.getMessage());
@@ -62,15 +66,18 @@ public class SecretUtil {
         };
     }
 
-    public static SocketSecret.Decrypt getDecrypt(Cipher cipher) {
+    public static SocketDecrypt getDecrypt(Cipher cipher) {
         return data -> {
             try {
+                if (data == null || !data.hasRemaining()) {
+                    return data;
+                }
                 ByteBuffer decrypted;
                 synchronized (cipher) {
                     decrypted = ByteBuffer.allocate(cipher.getOutputSize(data.remaining()));
                     cipher.doFinal(data, decrypted);
                 }
-                decrypted.rewind();
+                decrypted.flip();
                 return decrypted;
             } catch (Exception e) {
                 throw new SocketException(e, e.getMessage());

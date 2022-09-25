@@ -174,7 +174,6 @@ public class SocketParseMsgDto implements Serializable {
             throw new SocketException("报文数据异常");
         }
         checkMsgTail();
-        //TODO 检查
         this.msg = full.slice(5, size - 8);
         isDone = true;
         return stickMsg;

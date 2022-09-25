@@ -66,7 +66,6 @@ public class SocketMessageUtil {
     }
 
     public static ByteBuf unPackageData(ByteBuf packageData) {
-        //TODO 检查
         return packageData.slice(3, packageData.writerIndex() - 3);
     }
 

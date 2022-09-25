@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-public abstract class SocketClientCache<S extends SocketSecretDto> {
+public abstract class SocketClientCache<S extends SocketServerSecretDto> {
 
     //客户端appKey属性key
     private final AttributeKey<String> appKeyAttr = AttributeKey.valueOf("appKey");

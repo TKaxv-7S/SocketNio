@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Slf4j
-public abstract class SocketNioServer<T extends SocketClientCache<? extends SocketSecretDto>> extends AbstractSocketNioServer implements SocketNioServerWrite {
+public abstract class SocketNioServer<T extends SocketClientCache<? extends SocketServerSecretDto>> extends AbstractSocketNioServer implements SocketNioServerWrite {
 
     private final SocketServerHandler socketServerHandler;
 
@@ -143,7 +143,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
 
     @Override
     public SocketServerWrapMsgDto encode(Channel channel, ByteBuf data) {
-        SocketSecretDto secret = socketClientCache.getSecret(channel);
+        SocketServerSecretDto secret = socketClientCache.getSecret(channel);
         if (secret != null) {
             return new SocketServerWrapMsgDto(secret.encode(data), (byte) 0xFF);
         }
@@ -156,15 +156,12 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         String appKey = socketClientCache.getAppKey(channel);
         if (appKey == null) {
             byte[] appKeyBytes = new byte[appKeyLength];
-            //TODO 检查
             data.getBytes(4, appKeyBytes);
             appKey = new String(appKeyBytes, StandardCharsets.UTF_8);
-            SocketSecretDto secret = socketClientCache.getSecret(appKey);
+            SocketServerSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
-                //TODO 检查
-                ByteBuf decode = data.slice(index, data.writerIndex() - index);
-                ByteBuf bytes = secret.decode(decode);
+                ByteBuf bytes = secret.decode(data.slice(index, data.writerIndex() - index));
                 if (!socketClientCache.addClientChannel(appKey, channel, this)) {
                     log.error("appKey：{}，客户端连接数超出限制", appKey);
                     throw new SocketException("客户端连接数超出限制");
@@ -172,11 +169,10 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                 return bytes;
             }
         } else {
-            SocketSecretDto secret = socketClientCache.getSecret(appKey);
+            SocketServerSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
-                ByteBuf decode = data.slice(index, data.writerIndex() - index);
-                return secret.decode(decode);
+                return secret.decode(data.slice(index, data.writerIndex() - index));
             }
         }
         throw new SocketException("客户端未配置");

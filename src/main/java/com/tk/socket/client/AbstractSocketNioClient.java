@@ -116,7 +116,7 @@ public abstract class AbstractSocketNioClient {
 
                         channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
                         log.info("TCP客户端已连接，地址：{}，端口: {}", host, port);
-                        /*nioEventLoopGroup.execute(() -> {
+                        nioEventLoopGroup.execute(() -> {
                             Thread thread = Thread.currentThread();
                             while (!thread.isInterrupted()) {
                                 try {
@@ -132,7 +132,7 @@ public abstract class AbstractSocketNioClient {
                                 }
                             }
                             log.warn("TCP客户端心跳线程已关闭");
-                        });*/
+                        });
                         if (connCallback != null) {
                             connCallback.accept(this);
                         }

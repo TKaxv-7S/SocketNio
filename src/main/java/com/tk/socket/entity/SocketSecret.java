@@ -2,65 +2,72 @@ package com.tk.socket.entity;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
 
-@Slf4j
 public class SocketSecret {
 
-    private final Encrypt encode;
+    private final SocketEncrypt encrypt;
 
-    public Encrypt getEncode() {
-        return encode;
+    public SocketEncrypt getEncrypt() {
+        return encrypt;
     }
 
-    private final Decrypt decode;
+    private final SocketDecrypt decrypt;
 
-    public Decrypt getDecode() {
-        return decode;
+    public SocketDecrypt getDecrypt() {
+        return decrypt;
     }
 
-    public SocketSecret(Encrypt encode, Decrypt decode) {
-        this.encode = encode;
-        this.decode = decode;
+    private final GetEncrypt getEncrypt;
+
+    public SocketEncrypt getNewEncrypt() {
+        return getEncrypt.getEncrypt();
+    }
+
+    private final GetDecrypt getDecrypt;
+
+    public SocketDecrypt getNewDecrypt() {
+        return getDecrypt.getDecrypt();
+    }
+
+    public SocketSecret(GetEncrypt getEncrypt, GetDecrypt getDecrypt) {
+        this.getEncrypt = getEncrypt;
+        this.encrypt = getEncrypt.getEncrypt();
+        this.getDecrypt = getDecrypt;
+        this.decrypt = getDecrypt.getDecrypt();
     }
 
     public ByteBuf encode(ByteBuf byteBuf) {
-        ByteBuffer byteBuffer = toNioBuffer(byteBuf);
-        return Unpooled.wrappedBuffer(encode.encode(byteBuffer));
+        //TODO 优化修改
+        return Unpooled.wrappedBuffer(encrypt.encode(toNioBuffer(byteBuf)));
     }
 
     public ByteBuf decode(ByteBuf byteBuf) {
-        ByteBuffer byteBuffer = toNioBuffer(byteBuf);
-        ByteBuffer byteBuffer1 = decode.decode(byteBuffer);
-        return Unpooled.wrappedBuffer(byteBuffer1);
+        //TODO 优化修改
+        return Unpooled.wrappedBuffer(decrypt.decode(toNioBuffer(byteBuf)));
     }
 
     @FunctionalInterface
-    public interface Encrypt {
-        ByteBuffer encode(ByteBuffer data);
+    public interface GetEncrypt {
+        SocketEncrypt getEncrypt();
     }
 
     @FunctionalInterface
-    public interface Decrypt {
-        ByteBuffer decode(ByteBuffer data);
+    public interface GetDecrypt {
+        SocketDecrypt getDecrypt();
     }
 
     public static ByteBuffer toNioBuffer(ByteBuf byteBuf) {
-        byte[] bytes = new byte[byteBuf.writerIndex()];
-        byteBuf.getBytes(0, bytes);
-        log.debug("toNioBuffer before:{}", bytes);
+        int length = byteBuf.writerIndex();
         ByteBuffer byteBuffer;
         if (byteBuf.isDirect()) {
             byteBuffer = byteBuf.nioBuffer();
         } else {
-            byteBuffer = ByteBuffer.allocate(byteBuf.writerIndex());
+            byteBuffer = ByteBuffer.allocate(length);
         }
         byteBuf.getBytes(0, byteBuffer);
-        byte[] oo = new byte[byteBuffer.remaining()];
-        byteBuffer.get(oo);
-        log.debug("toNioBuffer:{}", oo);
+        byteBuffer.flip();
         return byteBuffer;
     }
 

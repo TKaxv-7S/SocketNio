@@ -7,8 +7,8 @@ import com.tk.socket.SocketMsgDataDto;
 import com.tk.socket.client.SocketClientConfig;
 import com.tk.socket.entity.SocketSecret;
 import com.tk.socket.server.SocketClientCache;
-import com.tk.socket.server.SocketSecretDto;
 import com.tk.socket.server.SocketServerConfig;
+import com.tk.socket.server.SocketServerSecretDto;
 import com.tk.socket.utils.SecretUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
@@ -29,9 +29,10 @@ public class TestMain {
     public static void main(String[] args) throws InterruptedException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException {
         String appKey = "socket-test-client";
         byte[] secretBytes = "zacXa/U2bSHs/iQp".getBytes(StandardCharsets.UTF_8);
-        SocketSecret.Encrypt encode = SecretUtil.getAESEncrypt(secretBytes);
-        SocketSecret.Decrypt decode = SecretUtil.getAESDecrypt(secretBytes);
-        SocketSecret socketSecret = new SocketSecret(encode, decode);
+        SocketSecret socketSecret = new SocketSecret(
+                () -> SecretUtil.getAESEncrypt(secretBytes),
+                () -> SecretUtil.getAESDecrypt(secretBytes)
+        );
         int serverPort = 8089;
 
 //        ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID);
@@ -43,8 +44,8 @@ public class TestMain {
         socketServerConfig.setMaxHandlerDataThreadCount(4);
         DefaultSocketNioServer socketNioServer = new DefaultSocketNioServer(socketServerConfig, new SocketServerDataHandler());
         socketNioServer.initNioServerSync();
-        SocketClientCache<SocketSecretDto> socketClientCache = socketNioServer.getSocketClientCache();
-        socketClientCache.addSecret(SocketSecretDto.build(
+        SocketClientCache<SocketServerSecretDto> socketClientCache = socketNioServer.getSocketClientCache();
+        socketClientCache.addSecret(SocketServerSecretDto.build(
                 appKey,
                 socketSecret,
                 2,

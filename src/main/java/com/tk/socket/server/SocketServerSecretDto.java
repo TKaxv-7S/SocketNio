@@ -8,7 +8,7 @@ import java.io.Serializable;
 /**
  * socket密钥dto
  */
-public class SocketSecretDto implements Serializable {
+public class SocketServerSecretDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -61,7 +61,7 @@ public class SocketSecretDto implements Serializable {
         return secret.decode(data);
     }
 
-    public SocketSecretDto(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
+    public SocketServerSecretDto(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
         this.appKey = appKey;
         this.secret = secret;
         this.maxConnection = maxConnection;
@@ -69,7 +69,7 @@ public class SocketSecretDto implements Serializable {
         this.heartbeatTimeout = heartbeatTimeout;
     }
 
-    public static SocketSecretDto build(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
-        return new SocketSecretDto(appKey, secret, maxConnection, heartbeatInterval, heartbeatTimeout);
+    public static SocketServerSecretDto build(String appKey, SocketSecret secret, Integer maxConnection, Integer heartbeatInterval, Integer heartbeatTimeout) {
+        return new SocketServerSecretDto(appKey, secret, maxConnection, heartbeatInterval, heartbeatTimeout);
     }
 }

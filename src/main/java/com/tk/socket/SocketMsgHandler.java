@@ -35,7 +35,6 @@ public class SocketMsgHandler {
     }
 
     public void putData(ChannelHandlerContext channel, ByteBuf data) throws InterruptedException {
-        //TODO 检查
         byte[] bytes = new byte[data.writerIndex()];
         data.getBytes(0, bytes);
         //如果队列已满，需阻塞
