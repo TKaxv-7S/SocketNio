@@ -114,7 +114,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                     SocketMsgDataDto syncDataDto;
                     try {
                         log.debug("客户端执行method：{}", method);
-                        syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getClientChannel(channel));
+                        syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getChannel(channel));
                     } catch (Exception e) {
                         syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
                     }
@@ -127,14 +127,14 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                 }
             } else {
                 //客户端心跳
-                socketClientCache.getClientChannel(ctx.channel());
+                socketClientCache.getChannel(ctx.channel());
             }
         };
     }
 
     @Override
     public Boolean isClient(Channel channel) {
-        return socketClientCache.hasAppKey(channel);
+        return socketClientCache.hasClientKey(channel);
     }
 
     public SocketMsgDataDto readSocketDataDto(byte[] data) {
@@ -157,12 +157,12 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         if (appKey == null) {
             byte[] appKeyBytes = new byte[appKeyLength];
             data.getBytes(4, appKeyBytes);
-            appKey = new String(appKeyBytes, StandardCharsets.UTF_8);
+            appKey = SocketServerChannel.getAppKey(new String(appKeyBytes, StandardCharsets.UTF_8));
             SocketServerSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
                 ByteBuf bytes = secret.decode(data.slice(index, data.writerIndex() - index));
-                if (!socketClientCache.addClientChannel(appKey, channel, this)) {
+                if (!socketClientCache.addChannel(appKey, channel, this)) {
                     log.error("appKey：{}，客户端连接数超出限制", appKey);
                     throw new SocketException("客户端连接数超出限制");
                 }
@@ -180,7 +180,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
 
     @Override
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
-        socketClientCache.delClientChannel(ctx.channel());
+        socketClientCache.delChannel(ctx.channel());
         super.channelUnregisteredEvent(ctx);
     }
 }

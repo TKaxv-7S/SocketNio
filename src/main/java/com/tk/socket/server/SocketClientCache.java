@@ -6,8 +6,8 @@ import com.github.benmanes.caffeine.cache.Expiry;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.tk.socket.SocketException;
 import io.netty.channel.Channel;
-import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.HashSet;
@@ -20,29 +20,26 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public abstract class SocketClientCache<S extends SocketServerSecretDto> {
 
-    //客户端appKey属性key
-    private final AttributeKey<String> appKeyAttr = AttributeKey.valueOf("appKey");
-
     //appKey-Secret缓存
     private final Map<String, S> secretCacheMap = new ConcurrentHashMap<>();
 
-    //客户端缓存，key：appKey，value：客户端Channel队列
-    private final Cache<String, SocketServerChannelQueue<S>> clientCache = Caffeine.newBuilder()
+    //客户端缓存，key：clientKey，value：客户端Channel队列
+    private final Cache<String, SocketServerChannelQueue> cache = Caffeine.newBuilder()
             //.expireAfterAccess(5, TimeUnit.MINUTES)
-            .expireAfter(new Expiry<String, SocketServerChannelQueue<S>>() {
-                public long expireAfterCreate(@NonNull String key, @NonNull SocketServerChannelQueue<S> value, long currentTime) {
+            .expireAfter(new Expiry<String, SocketServerChannelQueue>() {
+                public long expireAfterCreate(@NonNull String key, @NonNull SocketServerChannelQueue value, long currentTime) {
                     return 4611686018427387903L;
                 }
 
-                public long expireAfterUpdate(@NonNull String key, @NonNull SocketServerChannelQueue<S> value, long currentTime, long currentDuration) {
+                public long expireAfterUpdate(@NonNull String key, @NonNull SocketServerChannelQueue value, long currentTime, long currentDuration) {
                     return 4611686018427387903L;
                 }
 
-                public long expireAfterRead(@NonNull String key, @NonNull SocketServerChannelQueue<S> value, long currentTime, long currentDuration) {
+                public long expireAfterRead(@NonNull String key, @NonNull SocketServerChannelQueue value, long currentTime, long currentDuration) {
                     return TimeUnit.SECONDS.toNanos(value.getTimeoutSeconds());
                 }
             })
-            .removalListener((String key, SocketServerChannelQueue<S> value, RemovalCause removalCause) -> {
+            .removalListener((String key, SocketServerChannelQueue value, RemovalCause removalCause) -> {
                 if (value != null) {
                     try {
                         value.clear();
@@ -54,104 +51,125 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
             })
             .build();
 
-    public Boolean addClientChannel(String appKey, Channel channel, SocketNioServerWrite socketNioServerWrite) {
-        SocketServerChannelQueue<S> serverChannelQueue;
-        synchronized (clientCache) {
-            serverChannelQueue = clientCache.getIfPresent(appKey);
+    public Boolean addChannel(String clientKey, Channel channel, SocketNioServerWrite socketNioServerWrite) {
+        SocketServerChannelQueue serverChannelQueue;
+        synchronized (cache) {
+            serverChannelQueue = cache.getIfPresent(clientKey);
             if (serverChannelQueue == null) {
-                S socketSecret = getSecret(appKey);
+                S socketSecret = getSecret(clientKey);
                 if (socketSecret == null) {
-                    log.error("appKey：{}，客户端appKey未配置", appKey);
+                    log.error("clientKey：{}，客户端appKey未配置", clientKey);
                     throw new SocketException("客户端appKey未配置");
                 }
-                serverChannelQueue = new SocketServerChannelQueue<>(socketSecret.getMaxConnection(), socketSecret.getHeartbeatTimeout());
-                clientCache.put(appKey, serverChannelQueue);
+                serverChannelQueue = new SocketServerChannelQueue(socketSecret.getMaxConnection(), socketSecret.getHeartbeatTimeout());
+                cache.put(clientKey, serverChannelQueue);
             }
         }
-        setAppKey(channel, appKey);
-        Boolean add = serverChannelQueue.add(SocketServerChannel.build(channel, socketNioServerWrite));
+        Boolean add = serverChannelQueue.add(SocketServerChannel.build(clientKey, channel, socketNioServerWrite));
         if (add) {
-            log.info("channelId：{}，已加入appKey：[{}]客户端连接池", channel.id(), appKey);
+            log.info("channelId：{}，已加入clientKey：[{}]客户端连接池", channel.id(), clientKey);
         }
         return add;
     }
 
-    public SocketServerChannel getClientChannel(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey == null) {
+    public SocketServerChannel getChannel(Channel channel) {
+        String clientKey = getClientKey(channel);
+        if (clientKey == null) {
             return null;
         }
-        return getClientChannel(appKey);
+        return getChannel(clientKey);
     }
 
 //    public abstract SocketServerChannel<SocketClientCache<T>> getClientChannel(String appKey);
 
-    public SocketServerChannel getClientChannel(String appKey) {
-        SocketServerChannelQueue<S> serverChannelQueue = clientCache.getIfPresent(appKey);
+    public SocketServerChannel getChannel(String clientKey) {
+        SocketServerChannelQueue serverChannelQueue = cache.getIfPresent(clientKey);
         if (serverChannelQueue == null) {
             return null;
         }
         return serverChannelQueue.get();
     }
 
-    public void delClientChannel(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey != null) {
-            SocketServerChannelQueue<S> serverChannelQueue = clientCache.getIfPresent(appKey);
+    public SocketServerChannel getChannel(String appKey, String appId) {
+        String clientKey;
+        if (StringUtils.isNotBlank(appId)) {
+            clientKey = appKey + "[" + appId + "]";
+        } else {
+            clientKey = appKey;
+        }
+        SocketServerChannelQueue serverChannelQueue = cache.getIfPresent(clientKey);
+        if (serverChannelQueue == null) {
+            return null;
+        }
+        return serverChannelQueue.get();
+    }
+
+    public void delChannel(Channel channel) {
+        String clientKey = getClientKey(channel);
+        if (clientKey != null) {
+            SocketServerChannelQueue serverChannelQueue = cache.getIfPresent(clientKey);
             if (serverChannelQueue == null) {
                 return;
             }
-            synchronized (clientCache) {
+            synchronized (cache) {
                 serverChannelQueue.del(channel.id());
                 if (serverChannelQueue.isEmpty()) {
-                    clientCache.invalidate(appKey);
+                    cache.invalidate(clientKey);
                 }
             }
         }
     }
 
-    public void delClientChannels(String appKey) {
-        if (appKey != null) {
-            SocketServerChannelQueue<S> serverChannelQueue = clientCache.getIfPresent(appKey);
+    public void delChannels(String clientKey) {
+        if (clientKey != null) {
+            SocketServerChannelQueue serverChannelQueue = cache.getIfPresent(clientKey);
             if (serverChannelQueue == null) {
                 return;
             }
-            synchronized (clientCache) {
-                clientCache.invalidate(appKey);
+            synchronized (cache) {
+                cache.invalidate(clientKey);
             }
         }
     }
 
-    protected SocketServerChannelQueue<S> getClientChannelQueue(String appKey) {
-        return clientCache.getIfPresent(appKey);
-    }
-
-    private void setAppKey(Channel channel, String appKey) {
-        channel.attr(appKeyAttr).set(appKey);
+    protected SocketServerChannelQueue getChannelQueue(String clientKey) {
+        return cache.getIfPresent(clientKey);
     }
 
     public String getAppKey(Channel channel) {
-        return channel.attr(appKeyAttr).get();
+        return SocketServerChannel.getAppKey(channel);
     }
 
     public Boolean hasAppKey(Channel channel) {
-        return channel.hasAttr(appKeyAttr);
+        return SocketServerChannel.hasAppKey(channel);
     }
 
-    public void delAppKey(Channel channel) {
-        channel.attr(appKeyAttr).set(null);
+    public Boolean hasAppKey(SocketServerChannel serverChannel) {
+        return serverChannel.hasAppKey();
+    }
+
+    public String getClientKey(Channel channel) {
+        return SocketServerChannel.getClientKey(channel);
+    }
+
+    public Boolean hasClientKey(Channel channel) {
+        return SocketServerChannel.hasClientKey(channel);
+    }
+
+    public Boolean hasClientKey(SocketServerChannel serverChannel) {
+        return serverChannel.hasClientKey();
     }
 
     public S getSecret(Channel channel) {
-        String appKey = getAppKey(channel);
-        if (appKey != null) {
-            return secretCacheMap.get(appKey);
-        }
-        return null;
+        return secretCacheMap.get(SocketServerChannel.getAppKey(channel));
     }
 
     public S getSecret(String appKey) {
         return secretCacheMap.get(appKey);
+    }
+
+    public S getSecret(SocketServerChannel serverChannel) {
+        return secretCacheMap.get(serverChannel.getAppKey());
     }
 
     public void addSecret(S socketSecret) {

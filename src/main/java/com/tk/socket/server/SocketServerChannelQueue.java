@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class SocketServerChannelQueue<S extends SocketServerSecretDto> {
+public class SocketServerChannelQueue {
 
     private static final int DEF_MAX_SIZE = 10;
 
