@@ -56,7 +56,7 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
         synchronized (cache) {
             serverChannelQueue = cache.getIfPresent(clientKey);
             if (serverChannelQueue == null) {
-                S socketSecret = getSecret(clientKey);
+                S socketSecret = getSecret(SocketServerChannel.getAppKey(clientKey));
                 if (socketSecret == null) {
                     log.error("clientKey：{}，客户端appKey未配置", clientKey);
                     throw new SocketException("客户端appKey未配置");

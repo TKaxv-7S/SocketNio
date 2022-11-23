@@ -157,13 +157,14 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         if (appKey == null) {
             byte[] appKeyBytes = new byte[appKeyLength];
             data.getBytes(4, appKeyBytes);
-            appKey = SocketServerChannel.getAppKey(new String(appKeyBytes, StandardCharsets.UTF_8));
+            String clientKey = new String(appKeyBytes, StandardCharsets.UTF_8);
+            appKey = SocketServerChannel.getAppKey(clientKey);
             SocketServerSecretDto secret = socketClientCache.getSecret(appKey);
             if (secret != null) {
                 int index = 4 + appKeyLength;
                 ByteBuf bytes = secret.decode(data.slice(index, data.writerIndex() - index));
-                if (!socketClientCache.addChannel(appKey, channel, this)) {
-                    log.error("appKey：{}，客户端连接数超出限制", appKey);
+                if (!socketClientCache.addChannel(clientKey, channel, this)) {
+                    log.error("clientKey：{}，客户端连接数超出限制", clientKey);
                     throw new SocketException("客户端连接数超出限制");
                 }
                 return bytes;
