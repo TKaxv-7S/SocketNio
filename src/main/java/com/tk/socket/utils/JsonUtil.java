@@ -7,9 +7,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 
-import java.io.IOException;
+import java.lang.reflect.Type;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 
 public class JsonUtil {
 
@@ -26,6 +28,8 @@ public class JsonUtil {
         MAPPER.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         //属性为null不转换
         MAPPER.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        MAPPER.setTimeZone(TimeZone.getDefault());
+        MAPPER.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
     }
 
     public static String toJsonString(Object object) {
@@ -39,6 +43,14 @@ public class JsonUtil {
     public static JsonParser getJsonParser(String body) {
         try {
             return JSON_FACTORY.createParser(body);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static <T> T parseObject(String body, Type type) {
+        try {
+            return MAPPER.readValue(body, TYPE_FACTORY.constructType(type));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -68,6 +80,14 @@ public class JsonUtil {
         }
     }
 
+    public static <T> T parseObject(JsonParser jsonParser, Type type) {
+        try {
+            return MAPPER.readValue(jsonParser, TYPE_FACTORY.constructType(type));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static <T> T parseObject(JsonParser jsonParser, JavaType javaType) {
         try {
             return MAPPER.readValue(jsonParser, javaType);
@@ -87,6 +107,14 @@ public class JsonUtil {
     public static <T> T parseObject(JsonParser jsonParser, Class<T> clazz) {
         try {
             return MAPPER.readValue(jsonParser, clazz);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static <T> T parseObject(Object bean, Type type) {
+        try {
+            return MAPPER.convertValue(bean, TYPE_FACTORY.constructType(type));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -125,7 +153,7 @@ public class JsonUtil {
                 return leaf.asText();
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -139,7 +167,7 @@ public class JsonUtil {
                 return leaf.asInt();
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -155,7 +183,7 @@ public class JsonUtil {
                 });
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -170,7 +198,7 @@ public class JsonUtil {
                 return leaf.asBoolean();
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -185,7 +213,7 @@ public class JsonUtil {
                 return value.shortValue();
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -200,7 +228,7 @@ public class JsonUtil {
                 return value.byteValue();
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -211,7 +239,7 @@ public class JsonUtil {
             node = MAPPER.readTree(body);
             node = node.get(field);
             return MAPPER.treeToValue(node, clazz);
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -230,7 +258,7 @@ public class JsonUtil {
         }
         try {
             return MAPPER.readTree(json);
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
 

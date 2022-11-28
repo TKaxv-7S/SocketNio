@@ -7,6 +7,7 @@ import com.tk.socket.entity.Node;
 import com.tk.socket.utils.JsonUtil;
 
 import java.io.Serializable;
+import java.lang.reflect.Type;
 
 public class SocketJSONDataDto implements Serializable {
 
@@ -71,6 +72,15 @@ public class SocketJSONDataDto implements Serializable {
     @JsonIgnore
     public Object getData() {
         return nodeData.getNode();
+    }
+
+    @JsonIgnore
+    public <T> T getData(Type type) {
+        Object node = nodeData.getNode();
+        if (node == null) {
+            return null;
+        }
+        return JsonUtil.parseObject(node, type);
     }
 
     @JsonIgnore
