@@ -116,6 +116,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                         log.debug("客户端执行method：{}", method);
                         syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getChannel(channel));
                     } catch (Exception e) {
+                        log.error("客户端执行method：{} 异常", method, e);
                         syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
                     }
                     if (clientDataId != null) {
