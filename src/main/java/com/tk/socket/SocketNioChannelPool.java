@@ -2,6 +2,7 @@ package com.tk.socket;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -10,6 +11,7 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class SocketNioChannelPool {
@@ -84,7 +86,9 @@ public class SocketNioChannelPool {
 
         @Override
         public Channel create() throws Exception {
-            return bootstrap.connect(new InetSocketAddress(host, port)).sync().channel();
+            ChannelFuture connect = bootstrap.connect(new InetSocketAddress(host, port));
+            connect.await(5, TimeUnit.SECONDS);
+            return connect.channel();
         }
 
         @Override

@@ -303,9 +303,9 @@ public abstract class AbstractSocketNioClient {
     }
 
     public void write(ByteBuf data) {
-        if (!getIsInit()) {
+        /*if (!getIsInit()) {
             initNioClientSync();
-        }
+        }*/
         Channel channel = channelPool.borrowChannel();
         try {
             socketMsgHandler.write(channel, data);
@@ -315,9 +315,9 @@ public abstract class AbstractSocketNioClient {
     }
 
     public boolean writeAck(ByteBuf data, int seconds) {
-        if (!getIsInit()) {
+        /*if (!getIsInit()) {
             initNioClientSync();
-        }
+        }*/
         Channel channel = channelPool.borrowChannel();
         try {
             seconds = Math.min(seconds, 10);

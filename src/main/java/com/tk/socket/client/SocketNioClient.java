@@ -60,9 +60,9 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
     }
 
     public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
-        if (!getIsInit()) {
+        /*if (!getIsInit()) {
             initNioClientSync();
-        }
+        }*/
         Integer dataId = data.getClientDataId();
         if (dataId == null) {
             dataId = ThreadLocalRandom.current().nextInt();

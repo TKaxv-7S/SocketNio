@@ -12,7 +12,7 @@ public class SocketClientDataHandler implements SocketClientHandler {
 
     @Override
     public SocketMsgDataDto handle(String method, SocketMsgDataDto msgData, SocketNioClient socketNioClient) {
-        Map<String, Object> data = msgData.getData(Map.class.getGenericSuperclass());
+        Map<String, Object> data = msgData.getData(Map.class);
         //TODO 业务处理，同步请求则返回数据
         data.put("isDone", true);
         return msgData;
