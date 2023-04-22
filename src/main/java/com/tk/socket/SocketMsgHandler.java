@@ -30,8 +30,14 @@ public class SocketMsgHandler {
 
         int corePoolSize = Runtime.getRuntime().availableProcessors();
         int maxPoolSize = Math.max(maxDataThreadCount, corePoolSize);
-        this.dataConsumerThreadPoolExecutor = new ThreadPoolExecutor(corePoolSize, maxPoolSize, TimeUnit.SECONDS.toNanos(60), TimeUnit.NANOSECONDS, new LinkedBlockingQueue<>());
-
+        this.dataConsumerThreadPoolExecutor = new ThreadPoolExecutor(
+                corePoolSize,
+                maxPoolSize,
+                TimeUnit.SECONDS.toNanos(60), TimeUnit.NANOSECONDS,
+                new SynchronousQueue<>(),
+                Executors.defaultThreadFactory(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
     }
 
     public void putData(ChannelHandlerContext channel, ByteBuf data) throws InterruptedException {
