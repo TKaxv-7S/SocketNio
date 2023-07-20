@@ -87,8 +87,12 @@ public class SocketNioChannelPool {
         @Override
         public Channel create() throws Exception {
             ChannelFuture connect = bootstrap.connect(new InetSocketAddress(host, port));
-            connect.await(5, TimeUnit.SECONDS);
-            return connect.channel();
+            if (connect.await(5, TimeUnit.SECONDS)) {
+                log.info("创建socket连接成功");
+                return connect.channel();
+            }
+            log.error("创建socket连接失败");
+            return null;
         }
 
         @Override
@@ -98,7 +102,15 @@ public class SocketNioChannelPool {
 
         @Override
         public boolean validateObject(PooledObject<Channel> pooledObject) {
-            return pooledObject.getObject().isActive();
+            try {
+                Channel object = pooledObject.getObject();
+                if (object != null) {
+                    return object.isActive();
+                }
+            } catch (Exception e) {
+                log.error("验证socket连接异常", e);
+            }
+            return false;
         }
 
         @Override

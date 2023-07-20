@@ -6,12 +6,13 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import java.io.Serializable;
 import java.time.Duration;
 
-import static org.apache.commons.pool2.impl.BaseObjectPoolConfig.DEFAULT_MAX_WAIT;
 import static org.apache.commons.pool2.impl.GenericObjectPoolConfig.*;
 
 public abstract class AbstractSocketClientConfig implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    public static final Duration DEFAULT_MAX_WAIT = Duration.ofSeconds(60);
 
     private String host;
 
@@ -86,7 +87,7 @@ public abstract class AbstractSocketClientConfig implements Serializable {
     }
 
     public void setPoolMaxWait(Duration poolMaxWait) {
-        this.poolMaxWait = poolMaxWait;
+        this.poolMaxWait = checkPoolMaxWait(poolMaxWait);
     }
 
     public int getPoolMaxTotal() {
@@ -113,13 +114,20 @@ public abstract class AbstractSocketClientConfig implements Serializable {
         this.poolMinIdle = poolMinIdle;
     }
 
+    private Duration checkPoolMaxWait(Duration duration) {
+        return Duration.ZERO.compareTo(duration) > 0 ? Duration.ofSeconds(10) : duration.compareTo(DEFAULT_MAX_WAIT) > 0 ? DEFAULT_MAX_WAIT : duration;
+    }
+
     public GenericObjectPoolConfig<Channel> getPoolConfig() {
         GenericObjectPoolConfig<Channel> config = new GenericObjectPoolConfig<>();
-        config.setMaxWait(poolMaxWait);
+        config.setMaxWait(checkPoolMaxWait(poolMaxWait));
         config.setMaxTotal(poolMaxTotal);
         config.setMaxIdle(poolMaxIdle);
         config.setMinIdle(poolMinIdle);
+        config.setTestOnCreate(true);
         config.setTestOnBorrow(true);
+        config.setTestOnReturn(true);
+        //config.setLifo(false);
         return config;
     }
 

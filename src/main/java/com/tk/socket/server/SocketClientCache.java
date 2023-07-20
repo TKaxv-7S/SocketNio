@@ -185,6 +185,12 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
         }
     }
 
+    public Set<String> secretSet() {
+        synchronized (secretCacheMap) {
+            return secretCacheMap.keySet();
+        }
+    }
+
     public void refreshSecret(List<S> list) {
         Set<String> appKeySet = new HashSet<>();
         list.forEach(socketSecret -> {
