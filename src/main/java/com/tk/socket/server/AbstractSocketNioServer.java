@@ -1,30 +1,19 @@
 package com.tk.socket.server;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalCause;
-import com.tk.socket.*;
-import com.tk.socket.entity.SocketEncrypt;
-import com.tk.socket.utils.JsonUtil;
+import com.tk.socket.SocketException;
+import com.tk.socket.SocketMsgHandler;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.bootstrap.ServerBootstrapConfig;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.unix.PreferredDirectByteBufAllocator;
-import io.netty.util.Attribute;
-import io.netty.util.AttributeKey;
-import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -37,10 +26,6 @@ public abstract class AbstractSocketNioServer {
 
     private Channel channel = null;
 
-    public Boolean getIsInit() {
-        return channel != null;
-    }
-
     private SocketMsgHandler socketMsgHandler;
 
     private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
@@ -49,44 +34,8 @@ public abstract class AbstractSocketNioServer {
 
     public final SocketServerConfig config;
 
-    private final Integer msgSizeLimit;
-
-    private final Cache<ChannelId, Channel> unknownChannelCache;
-
-    private final AttributeKey<SocketParseMsgDto> msgKey = AttributeKey.valueOf("msg");
-
-    private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
-
     public AbstractSocketNioServer(SocketServerConfig config) {
         this.config = config;
-        this.msgSizeLimit = Optional.ofNullable(config.getMsgSizeLimit()).orElse(4 * 1024 * 1024);
-        this.unknownChannelCache = Caffeine.newBuilder()
-                .expireAfterWrite(config.getUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
-                .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
-                    if (value != null) {
-                        if (!isClient(value)) {
-                            value.close();
-                            log.info("客户端channelId：{}，已关闭", value.id());
-                        }
-                    }
-                })
-                .build();
-        /*this.readCacheMap = Caffeine.newBuilder()
-                .expireAfterAccess(10, TimeUnit.SECONDS)
-                .removalListener((ChannelId key, SocketMsgDto value, RemovalCause removalCause) -> {
-                    if (value != null) {
-                        CompositeByteBuf msg = value.getFull();
-                        while (msg.refCnt() > 0) {
-                            int numComponents = msg.numComponents();
-                            for (int i = 0; i < numComponents; i++) {
-                                ByteBuf component = msg.component(i);
-                                log.info("component index:{}，refCnt:{}", i, component.refCnt());
-                            }
-                            ReferenceCountUtil.release(msg);
-                        }
-                    }
-                })
-                .build();*/
         this.initRunnable = () -> {
             try {
                 synchronized (this) {
@@ -97,9 +46,13 @@ public abstract class AbstractSocketNioServer {
                                 .childHandler(new ChannelInitializer<SocketChannel>() {
                                     @Override
                                     protected void initChannel(SocketChannel socketChannel) throws Exception {
-                                        socketChannel.pipeline()
-                                                .addLast(new ServerInHandler())
-                                                .addLast(new ServerOutHandler());
+                                        Collection<ChannelHandler> handlers = setHandlers();
+                                        if (handlers != null) {
+                                            ChannelPipeline pipeline = socketChannel.pipeline();
+                                            for (ChannelHandler channelHandler : handlers) {
+                                                pipeline.addLast(channelHandler);
+                                            }
+                                        }
                                     }
                                 })
                                 .option(ChannelOption.SO_BACKLOG, 128)
@@ -137,207 +90,38 @@ public abstract class AbstractSocketNioServer {
         };
     }
 
-    public abstract SocketServerWrapMsgDto encode(Channel channel, ByteBuf data);
+    public Boolean getIsInit() {
+        return channel != null;
+    }
+
+    public abstract Collection<ChannelHandler> setHandlers();
+
+    public abstract ByteBuf encode(Channel channel, ByteBuf data);
 
     public abstract ByteBuf decode(Channel channel, ByteBuf data, byte secretByte);
 
-    public abstract BiConsumer<ChannelHandlerContext, byte[]> setDataConsumer();
-
-    public abstract Boolean isClient(Channel channel);
+    public abstract BiConsumer<Channel, byte[]> setDataConsumer();
 
     protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
-        if (!isClient(channel)) {
-            unknownChannelCache.put(channel.id(), channel);
-        }
         InetSocketAddress inetSocketAddress = (InetSocketAddress) channel.remoteAddress();
-        Attribute<SocketParseMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
-        socketMsgDtoAttribute.setIfAbsent(new SocketParseMsgDto(msgSizeLimit, 10));
-        log.info("客户端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+        if (inetSocketAddress != null) {
+            log.info("客户端channelId：{}，address：{}，port：{}，已注册", channel.id(), inetSocketAddress.getAddress(), inetSocketAddress.getPort());
+        } else {
+            log.info("客户端channelId：{}，address：null，port：null，已注册", channel.id());
+        }
     }
 
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
-        Channel channel = ctx.channel();
-        ChannelId channelId = channel.id();
-        unknownChannelCache.invalidate(channelId);
-        Attribute<SocketParseMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
-        SocketParseMsgDto socketParseMsgDto = socketMsgDtoAttribute.getAndSet(null);
-        try {
-            if (socketParseMsgDto != null) {
-                socketParseMsgDto.release();
-            }
-        } catch (Exception e) {
-            log.error("消息释放异常", e);
-        }
-        log.info("客户端channelId：{}，已注销", channelId);
+        log.info("客户端channelId：{}，已注销", ctx.channel().id());
     }
 
-    @ChannelHandler.Sharable
-    class ServerInHandler extends ChannelInboundHandlerAdapter {
-
-        @Override
-        public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
-            super.channelRegistered(ctx);
-            channelRegisteredEvent(ctx);
-        }
-
-        @Override
-        public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
-            super.channelUnregistered(ctx);
-            channelUnregisteredEvent(ctx);
-        }
-
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msgObj) throws Exception {
-            ByteBuf msg = (ByteBuf) msgObj;
-
-            Channel socketChannel = ctx.channel();
-            ChannelId channelId = socketChannel.id();
-            Attribute<SocketParseMsgDto> socketMsgDtoAttribute = socketChannel.attr(msgKey);
-            ByteBuf leftMsg = msg;
-            SocketParseMsgDto socketParseMsgDto = socketMsgDtoAttribute.get();
-            try {
-                do {
-                    synchronized (socketParseMsgDto) {
-                        leftMsg = socketParseMsgDto.parsingMsg(leftMsg);
-                    }
-                    if (!socketParseMsgDto.getDone()) {
-                        break;
-                    }
-                    Byte secretByte = socketParseMsgDto.getSecretByte();
-                    //读取完成，写入队列
-                    ByteBuf decodeBytes;
-                    try {
-                        decodeBytes = decode(ctx.channel(), socketParseMsgDto.getMsg(), secretByte);
-                    } catch (Exception e) {
-                        log.debug("解码错误", e);
-                        //丢弃并关闭连接
-                        throw new SocketException("报文解码错误");
-                    }
-
-                    int length = decodeBytes.writerIndex();
-                    boolean sendOrReceiveAck = SocketMessageUtil.isAckData(decodeBytes);
-                    if (length > 3) {
-                        log.debug("数据已接收，channelId：{}", channelId);
-                        socketMsgHandler.putData(ctx, SocketMessageUtil.unPackageData(decodeBytes));
-                        if (sendOrReceiveAck) {
-                            byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                            try {
-                                socketChannel.writeAndFlush(ackBytes);
-                                //log.debug("发送ack字节：{}", ackBytes);
-                            } catch (Exception e) {
-                                log.error("ack编码错误", e);
-                            }
-                        }
-                    } else {
-                        if (!sendOrReceiveAck) {
-                            //接收ackBytes
-                            byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
-                            int ackKey = SocketMessageUtil.threeByteArrayToInt(ackBytes);
-                            String key = Integer.toString(ackKey).concat(channelId.asShortText());
-                            SocketAckThreadDto socketAckThreadDto = ackDataMap.get(key);
-                            if (socketAckThreadDto != null) {
-                                synchronized (socketAckThreadDto) {
-                                    socketAckThreadDto.setIsAck(true);
-                                    socketAckThreadDto.notify();
-                                }
-//                            LockSupport.unpark(socketAckThreadDto.getThread());
-                                //log.debug("接收ack字节：{}，已完成", ackBytes);
-                            } else {
-                                log.error("接收ack字节：{}，未命中或请求超时", ackBytes);
-                            }
-                        } else {
-                            //关闭连接
-                            throw new SocketException("报文数据异常");
-                        }
-                    }
-                    socketParseMsgDto.clear();
-                } while (leftMsg != null);
-            } catch (SocketException e) {
-                log.error("数据解析异常：{}", e.getMessage());
-                //丢弃数据并关闭连接
-                socketChannel.close();
-                //异常丢弃
-                socketParseMsgDto.release();
-                while (msg.refCnt() > 0) {
-                    ReferenceCountUtil.release(msg);
-                }
-            } catch (Exception e) {
-                log.error("数据解析异常", e);
-                //丢弃数据并关闭连接
-                socketChannel.close();
-                //异常丢弃
-                socketParseMsgDto.release();
-                while (msg.refCnt() > 0) {
-                    ReferenceCountUtil.release(msg);
-                }
-            }
-        }
-    }
-
-    @ChannelHandler.Sharable
-    class ServerOutHandler extends ChannelOutboundHandlerAdapter {
-
-        private final ThreadLocal<SocketEncrypt> threadEncrypt = new ThreadLocal<>();
-
-        @Override
-        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            ByteBuf data;
-            if (msg instanceof ByteBuf) {
-                data = (ByteBuf) msg;
-            } else if (msg instanceof byte[]) {
-                data = Unpooled.wrappedBuffer((byte[]) msg);
-            } else {
-                //传输其他类型数据时暂不支持ACK，需使用ByteBuf或byte[]
-                data = SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(msg).getBytes(StandardCharsets.UTF_8)), false);
-            }
-            ctx.writeAndFlush(encode(ctx.channel(), data).getWrapMsg(), promise);
-            log.debug("数据已发送，channelId：{}", ctx.channel().id());
-        }
+    protected void read(Channel channel, ByteBuf data) {
+        socketMsgHandler.read(channel, data);
     }
 
     public void write(Channel socketChannel, ByteBuf data) {
         socketMsgHandler.write(socketChannel, data);
-    }
-
-    /**
-     * 服务端等待确认时间最久10秒
-     *
-     * @param socketChannel
-     * @param data
-     * @param seconds
-     * @return
-     */
-    public boolean writeAck(Channel socketChannel, ByteBuf data, int seconds) {
-        seconds = Math.min(seconds, 10);
-        ByteBuf packageData = SocketMessageUtil.packageData(data, true);
-        byte[] needAckBytes = {(byte) (packageData.getByte(0) & (byte) 0x7F), packageData.getByte(1), packageData.getByte(2)};
-        int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
-        String key = Integer.toString(ackKey).concat(socketChannel.id().asShortText());
-        try {
-            SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
-            ackDataMap.put(key, ackThreadDto);
-            synchronized (ackThreadDto) {
-                socketChannel.writeAndFlush(packageData);
-                log.debug("等待ack字节：{}", needAckBytes);
-                ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
-            }
-//            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
-            SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
-            return socketAckThreadDto != null && socketAckThreadDto.getIsAck();
-        } catch (InterruptedException e) {
-            log.error("同步写异常", e);
-            ackDataMap.remove(key);
-            throw new SocketException("同步写异常");
-        } catch (Exception e) {
-            log.error("同步写异常", e);
-            ackDataMap.remove(key);
-            throw e;
-        }
-    }
-
-    public boolean writeAck(Channel socketChannel, ByteBuf data) {
-        return writeAck(socketChannel, data, 10);
     }
 
     public void initNioServerAsync() {

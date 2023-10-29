@@ -2,7 +2,6 @@ package com.tk.socket;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -14,7 +13,7 @@ public class SocketMsgHandler {
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
-    private final BiConsumer<ChannelHandlerContext, byte[]> dataConsumer;
+    private final BiConsumer<Channel, byte[]> dataConsumer;
 
     private final ThreadPoolExecutor dataConsumerThreadPoolExecutor;
 
@@ -23,7 +22,7 @@ public class SocketMsgHandler {
     }
 
     public SocketMsgHandler(
-            BiConsumer<ChannelHandlerContext, byte[]> dataConsumer
+            BiConsumer<Channel, byte[]> dataConsumer
             , int maxDataThreadCount
     ) {
         this.dataConsumer = dataConsumer;
@@ -40,7 +39,7 @@ public class SocketMsgHandler {
         );
     }
 
-    public void putData(ChannelHandlerContext channel, ByteBuf data) throws InterruptedException {
+    public void read(Channel channel, ByteBuf data) {
         byte[] bytes = new byte[data.writerIndex()];
         data.getBytes(0, bytes);
         //如果队列已满，需阻塞
@@ -52,41 +51,6 @@ public class SocketMsgHandler {
             socketChannel.writeAndFlush(SocketMessageUtil.packageData(data, false));
         } catch (Exception e) {
             log.error("写入异常", e);
-            throw e;
-        }
-    }
-
-    /**
-     * 同步写
-     *
-     * @param socketChannel
-     * @param data
-     * @param seconds
-     * @return
-     */
-    public boolean writeAck(Channel socketChannel, ByteBuf data, int seconds) {
-        ByteBuf packageData = SocketMessageUtil.packageData(data, true);
-        byte[] needAckBytes = {(byte) (packageData.getByte(0) & (byte) 0x7F), packageData.getByte(1), packageData.getByte(2)};
-        int ackKey = SocketMessageUtil.threeByteArrayToInt(needAckBytes);
-        String key = Integer.toString(ackKey).concat(socketChannel.id().asShortText());
-        try {
-            SocketAckThreadDto ackThreadDto = new SocketAckThreadDto();
-            ackDataMap.put(key, ackThreadDto);
-            synchronized (ackThreadDto) {
-                socketChannel.writeAndFlush(packageData);
-                log.debug("等待ack字节：{}", needAckBytes);
-                ackThreadDto.wait(TimeUnit.SECONDS.toMillis(seconds));
-            }
-//            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(Math.min(seconds, 10)));
-            SocketAckThreadDto socketAckThreadDto = ackDataMap.remove(key);
-            return socketAckThreadDto != null && socketAckThreadDto.getIsAck();
-        } catch (InterruptedException e) {
-            log.error("同步写异常", e);
-            ackDataMap.remove(key);
-            throw new SocketException("同步写异常");
-        } catch (Exception e) {
-            log.error("同步写异常", e);
-            ackDataMap.remove(key);
             throw e;
         }
     }
