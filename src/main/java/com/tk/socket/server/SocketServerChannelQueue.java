@@ -129,13 +129,14 @@ public class SocketServerChannelQueue {
         }
     }
 
-    public void del(ChannelId channelId) {
+    public SocketServerChannel del(ChannelId channelId) {
         synchronized (this) {
             SocketServerChannel removeSocketServerChannel = map.remove(channelId);
             if (removeSocketServerChannel != null) {
                 removeSocketServerChannel.getChannel().close();
             }
             queue.remove(channelId);
+            return removeSocketServerChannel;
         }
     }
 

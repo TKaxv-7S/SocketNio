@@ -1,6 +1,5 @@
 package com.tk.socket;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,7 +12,7 @@ public class SocketMsgHandler {
 
     private final Map<String, SocketAckThreadDto> ackDataMap = new ConcurrentHashMap<>();
 
-    private final BiConsumer<Channel, byte[]> dataConsumer;
+    private final BiConsumer<Channel, Object> dataConsumer;
 
     private final ThreadPoolExecutor dataConsumerThreadPoolExecutor;
 
@@ -22,11 +21,10 @@ public class SocketMsgHandler {
     }
 
     public SocketMsgHandler(
-            BiConsumer<Channel, byte[]> dataConsumer
+            BiConsumer<Channel, Object> dataConsumer
             , int maxDataThreadCount
     ) {
         this.dataConsumer = dataConsumer;
-
         int corePoolSize = Runtime.getRuntime().availableProcessors();
         int maxPoolSize = Math.max(maxDataThreadCount, corePoolSize);
         this.dataConsumerThreadPoolExecutor = new ThreadPoolExecutor(
@@ -39,20 +37,9 @@ public class SocketMsgHandler {
         );
     }
 
-    public void read(Channel channel, ByteBuf data) {
-        byte[] bytes = new byte[data.writerIndex()];
-        data.getBytes(0, bytes);
+    public void read(Channel channel, Object data) {
         //如果队列已满，需阻塞
-        dataConsumerThreadPoolExecutor.execute(() -> dataConsumer.accept(channel, bytes));
-    }
-
-    public void write(Channel socketChannel, ByteBuf data) {
-        try {
-            socketChannel.writeAndFlush(SocketMessageUtil.packageData(data, false));
-        } catch (Exception e) {
-            log.error("写入异常", e);
-            throw e;
-        }
+        dataConsumerThreadPoolExecutor.execute(() -> dataConsumer.accept(channel, data));
     }
 
     public boolean shutdownNow() {

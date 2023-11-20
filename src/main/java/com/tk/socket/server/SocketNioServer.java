@@ -1,9 +1,6 @@
 package com.tk.socket.server;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.tk.socket.*;
 import com.tk.socket.utils.JsonUtil;
 import io.netty.buffer.ByteBuf;
@@ -20,7 +17,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 
 @Slf4j
 public abstract class SocketNioServer<T extends SocketClientCache<? extends SocketServerSecretDto>> extends AbstractSocketNioServer implements SocketNioServerWrite {
@@ -38,8 +34,6 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
 
     protected final SocketServerHandler socketServerHandler;
 
-    private final Cache<ChannelId, Channel> unknownChannelCache;
-
     protected final T socketClientCache;
 
     public T getSocketClientCache() {
@@ -50,17 +44,6 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         super(config);
         this.msgSizeLimit = Optional.ofNullable(config.getMsgSizeLimit()).orElse(4 * 1024 * 1024);
         this.socketServerHandler = socketServerHandler;
-        this.unknownChannelCache = Caffeine.newBuilder()
-                .expireAfterWrite(config.getUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
-                .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
-                    if (value != null) {
-                        if (!isClient(value)) {
-                            value.close();
-                            log.info("客户端channelId：{}，已关闭", value.id());
-                        }
-                    }
-                })
-                .build();
         this.socketClientCache = socketClientCache;
         /*this.readCacheMap = Caffeine.newBuilder()
                 .expireAfterAccess(10, TimeUnit.SECONDS)
@@ -98,7 +81,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
     }
 
     @Override
-    public ByteBuf decode(Channel channel, ByteBuf data, byte secretByte) {
+    public ByteBuf decode(Channel channel, ByteBuf data) {
         int appKeyLength = SocketMessageUtil.byteArrayToInt(data);
         String appKey = socketClientCache.getAppKey(channel);
         if (appKey == null) {
@@ -127,48 +110,47 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
     }
 
     @Override
-    public BiConsumer<Channel, byte[]> setDataConsumer() {
-        return (channel, bytes) -> {
-            SocketMsgDataDto socketDataDto = readSocketDataDto(bytes);
-            Integer serverDataId = socketDataDto.getServerDataId();
-            if (serverDataId != null) {
-                SocketMsgDataDto syncDataDto = syncDataMap.get(serverDataId);
-                if (syncDataDto != null) {
-                    synchronized (syncDataDto) {
-                        syncDataDto.setData(socketDataDto.getData());
-                        syncDataDto.setCode(socketDataDto.getCode());
-                        syncDataDto.setMsg(socketDataDto.getMsg());
-                        syncDataDto.setMethod("syncReturn");
-                        syncDataDto.notify();
-                    }
+    public void read(Channel channel, Object msg) {
+        byte[] bytes = (byte[]) msg;
+        SocketMsgDataDto socketDataDto = readSocketDataDto(bytes);
+        Integer serverDataId = socketDataDto.getServerDataId();
+        if (serverDataId != null) {
+            SocketMsgDataDto syncDataDto = syncDataMap.get(serverDataId);
+            if (syncDataDto != null) {
+                synchronized (syncDataDto) {
+                    syncDataDto.setData(socketDataDto.getData());
+                    syncDataDto.setCode(socketDataDto.getCode());
+                    syncDataDto.setMsg(socketDataDto.getMsg());
+                    syncDataDto.setMethod("syncReturn");
+                    syncDataDto.notify();
                 }
-                //不再继续执行，即便method不为空
-                return;
             }
-            String method = socketDataDto.getMethod();
-            if (StringUtils.isNotBlank(method)) {
-                if (socketDataDto.isSuccess()) {
-                    Integer clientDataId = socketDataDto.getClientDataId();
-                    SocketMsgDataDto syncDataDto;
-                    try {
-                        log.debug("客户端执行method：{}", method);
-                        syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getChannel(channel));
-                    } catch (Exception e) {
-                        log.error("客户端执行method：{} 异常", method, e);
-                        syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
-                    }
-                    if (clientDataId != null) {
-                        syncDataDto.setClientDataId(clientDataId);
-                        write(syncDataDto, channel);
-                    }
-                } else {
-                    log.error("客户端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
+            //不再继续执行，即便method不为空
+            return;
+        }
+        String method = socketDataDto.getMethod();
+        if (StringUtils.isNotBlank(method)) {
+            if (socketDataDto.isSuccess()) {
+                Integer clientDataId = socketDataDto.getClientDataId();
+                SocketMsgDataDto syncDataDto;
+                try {
+                    log.debug("客户端执行method：{}", method);
+                    syncDataDto = socketServerHandler.handle(method, socketDataDto, socketClientCache.getChannel(channel));
+                } catch (Exception e) {
+                    log.error("客户端执行method：{} 异常", method, e);
+                    syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
+                }
+                if (clientDataId != null) {
+                    syncDataDto.setClientDataId(clientDataId);
+                    write(syncDataDto, channel);
                 }
             } else {
-                //客户端心跳
-                socketClientCache.getChannel(channel);
+                log.error("客户端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
             }
-        };
+        } else {
+            //客户端心跳
+            socketClientCache.getChannel(channel);
+        }
     }
 
     @Override
@@ -177,9 +159,6 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         Channel channel = ctx.channel();
         Attribute<SocketParseMsgDto> socketMsgDtoAttribute = channel.attr(msgKey);
         socketMsgDtoAttribute.setIfAbsent(new SocketParseMsgDto(msgSizeLimit, 10));
-        if (!isClient(channel)) {
-            unknownChannelCache.put(channel.id(), channel);
-        }
     }
 
     @Override
@@ -196,11 +175,10 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
             log.error("消息释放异常", e);
         }
         socketClientCache.delChannel(channel);
-        unknownChannelCache.invalidate(channel.id());
     }
 
     public void write(SocketMsgDataDto data, Channel channel) {
-        write(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
+        write(channel, SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), false));
     }
 
     /**
@@ -265,7 +243,7 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(channel, Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
+                write(channel, SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), false));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -317,11 +295,10 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                     if (!socketParseMsgDto.getDone()) {
                         break;
                     }
-                    Byte secretByte = socketParseMsgDto.getSecretByte();
                     //读取完成，写入队列
                     ByteBuf decodeBytes;
                     try {
-                        decodeBytes = decode(ctx.channel(), socketParseMsgDto.getMsg(), secretByte);
+                        decodeBytes = decode(ctx.channel(), socketParseMsgDto.getMsg());
                     } catch (Exception e) {
                         log.debug("解码错误", e);
                         //丢弃并关闭连接
@@ -332,7 +309,10 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
                     boolean sendOrReceiveAck = SocketMessageUtil.isAckData(decodeBytes);
                     if (length > 3) {
                         log.debug("数据已接收，channelId：{}", channelId);
-                        read(ctx.channel(), SocketMessageUtil.unPackageData(decodeBytes));
+                        ByteBuf unPackageData = SocketMessageUtil.unPackageData(decodeBytes);
+                        byte[] bytes = new byte[unPackageData.writerIndex()];
+                        unPackageData.getBytes(0, bytes);
+                        msgHandler.read(ctx.channel(), bytes);
                         if (sendOrReceiveAck) {
                             byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
                             try {
@@ -407,8 +387,9 @@ public abstract class SocketNioServer<T extends SocketClientCache<? extends Sock
         }
     }
 
+    @Override
     public Boolean isClient(Channel channel) {
-        return socketClientCache.hasClientKey(channel);
+        return SocketServerChannel.hasClientKey(channel);
     }
 
     public SocketMsgDataDto readSocketDataDto(byte[] data) {

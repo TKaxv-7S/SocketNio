@@ -1,6 +1,5 @@
 package com.tk.socket.server;
 
-import com.tk.socket.SocketMsgDataDto;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.util.Attribute;
@@ -31,7 +30,7 @@ public class SocketServerChannel implements Serializable {
      */
     private final Channel channel;
 
-    private final SocketNioServerWrite socketNioServerWrite;
+    private final AbstractSocketNioServer server;
 
     public String getClientKey() {
         return clientKey;
@@ -45,36 +44,20 @@ public class SocketServerChannel implements Serializable {
         return channel;
     }
 
-    public SocketServerChannel(String clientKey, Channel channel, SocketNioServerWrite socketNioServerWrite) {
+    public SocketServerChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
         this.clientKey = StringUtils.isNotBlank(clientKey) ? clientKey : null;
         this.channelId = channel.id();
         this.channel = channel;
+        this.server = server;
         channel.attr(APP_CLIENT_ATTR).set(clientKey);
-        this.socketNioServerWrite = socketNioServerWrite;
     }
 
-    public static SocketServerChannel build(String clientKey, Channel channel, SocketNioServerWrite socketNioServerWrite) {
-        return new SocketServerChannel(clientKey, channel, socketNioServerWrite);
+    public static SocketServerChannel build(String clientKey, Channel channel, AbstractSocketNioServer server) {
+        return new SocketServerChannel(clientKey, channel, server);
     }
 
-    public void write(SocketMsgDataDto data) {
-        socketNioServerWrite.write(data, channel);
-    }
-
-    public boolean writeAck(SocketMsgDataDto data) {
-        return socketNioServerWrite.writeAck(data, channel);
-    }
-
-    public boolean writeAck(SocketMsgDataDto data, int seconds) {
-        return socketNioServerWrite.writeAck(data, channel, seconds);
-    }
-
-    public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
-        return socketNioServerWrite.writeSync(data, 10, channel);
-    }
-
-    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
-        return socketNioServerWrite.writeSync(data, seconds, channel);
+    public void write(Object data) {
+        server.write(channel, data);
     }
 
     public <T> void setAttr(String key, T value) {
@@ -118,7 +101,7 @@ public class SocketServerChannel implements Serializable {
             if (length < 1) {
                 return null;
             }
-            int endIndex = clientKey.indexOf("]", length -1);
+            int endIndex = clientKey.indexOf("]", length - 1);
             if (endIndex > -1) {
                 int startIndex = clientKey.indexOf("[");
                 if (startIndex > -1) {

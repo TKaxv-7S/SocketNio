@@ -51,7 +51,7 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
             })
             .build();
 
-    public Boolean addChannel(String clientKey, Channel channel, SocketNioServerWrite socketNioServerWrite) {
+    public Boolean addChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
         SocketServerChannelQueue serverChannelQueue;
         synchronized (cache) {
             serverChannelQueue = cache.getIfPresent(clientKey);
@@ -65,7 +65,7 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
                 cache.put(clientKey, serverChannelQueue);
             }
         }
-        Boolean add = serverChannelQueue.add(SocketServerChannel.build(clientKey, channel, socketNioServerWrite));
+        Boolean add = serverChannelQueue.add(SocketServerChannel.build(clientKey, channel, server));
         if (add) {
             log.info("channelId：{}，已加入clientKey：[{}]客户端连接池", channel.id(), clientKey);
         }
@@ -104,20 +104,22 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
         return serverChannelQueue.get();
     }
 
-    public void delChannel(Channel channel) {
+    public SocketServerChannel delChannel(Channel channel) {
         String clientKey = getClientKey(channel);
         if (clientKey != null) {
             SocketServerChannelQueue serverChannelQueue = cache.getIfPresent(clientKey);
             if (serverChannelQueue == null) {
-                return;
+                return null;
             }
             synchronized (cache) {
-                serverChannelQueue.del(channel.id());
+                SocketServerChannel socketServerChannel = serverChannelQueue.del(channel.id());
                 if (serverChannelQueue.isEmpty()) {
                     cache.invalidate(clientKey);
                 }
+                return socketServerChannel;
             }
         }
+        return null;
     }
 
     public void delChannels(String clientKey) {
@@ -150,10 +152,6 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
 
     public String getClientKey(Channel channel) {
         return SocketServerChannel.getClientKey(channel);
-    }
-
-    public Boolean hasClientKey(Channel channel) {
-        return SocketServerChannel.hasClientKey(channel);
     }
 
     public Boolean hasClientKey(SocketServerChannel serverChannel) {

@@ -28,7 +28,7 @@ public abstract class AbstractSocketNioClient {
 
     protected SocketNioChannelPool channelPool;
 
-    protected SocketMsgHandler socketMsgHandler;
+    protected SocketMsgHandler msgHandler;
 
     private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
@@ -87,13 +87,9 @@ public abstract class AbstractSocketNioClient {
                                 .option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1024 * 1024, 2 * 1024 * 1024));
                         String host = config.getHost();
                         Integer port = config.getPort();
-                        if (socketMsgHandler == null) {
-                            socketMsgHandler = new SocketMsgHandler(
-                                    (channel, bytes) -> setDataConsumer().accept(bytes)
-                                    , config.getMaxHandlerDataThreadCount()
-                            );
+                        if (msgHandler == null) {
+                            msgHandler = new SocketMsgHandler(this::read, config.getMaxHandlerDataThreadCount());
                         }
-
                         channelPool = new SocketNioChannelPool(bootstrap, host, port, config.getPoolConfig());
                         log.info("TCP客户端已连接，地址：{}，端口: {}", host, port);
                         if (connCallback != null) {
@@ -122,7 +118,19 @@ public abstract class AbstractSocketNioClient {
 
     public abstract ByteBuf decode(ByteBuf data, byte secretByte);
 
-    public abstract Consumer<byte[]> setDataConsumer();
+    public abstract void read(Channel channel, Object msg);
+
+    public void write(Object msg) {
+        Channel channel = channelPool.borrowChannel();
+        try {
+            channel.writeAndFlush(msg);
+        } catch (Exception e) {
+            log.error("写入异常", e);
+            throw e;
+        } finally {
+            channelPool.returnChannel(channel);
+        }
+    }
 
     protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
@@ -136,24 +144,6 @@ public abstract class AbstractSocketNioClient {
 
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
         log.info("服务端channelId：{}，已注销", ctx.channel().id());
-    }
-
-    protected void read(ByteBuf data) {
-        Channel channel = channelPool.borrowChannel();
-        try {
-            socketMsgHandler.read(channel, data);
-        } finally {
-            channelPool.returnChannel(channel);
-        }
-    }
-
-    public void write(ByteBuf data) {
-        Channel channel = channelPool.borrowChannel();
-        try {
-            socketMsgHandler.write(channel, data);
-        } finally {
-            channelPool.returnChannel(channel);
-        }
     }
 
     public synchronized void initNioClientAsync() {
@@ -187,14 +177,14 @@ public abstract class AbstractSocketNioClient {
         if (getIsInit()) {
             synchronized (lockObj) {
                 if (getIsInit()) {
-                    if (socketMsgHandler.shutdownNow()) {
+                    if (msgHandler.shutdownNow()) {
                         channelPool.close();
                         if (bootstrap != null) {
                             //关闭线程组
                             bootstrap.config().group().shutdownGracefully();
                         }
                         bootstrap = null;
-                        socketMsgHandler = null;
+                        msgHandler = null;
                         log.info("TCP客户端已关闭");
                     }
                 }

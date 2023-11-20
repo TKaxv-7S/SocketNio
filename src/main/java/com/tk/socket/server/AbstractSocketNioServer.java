@@ -1,5 +1,8 @@
 package com.tk.socket.server;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.tk.socket.SocketException;
 import com.tk.socket.SocketMsgHandler;
 import io.netty.bootstrap.ServerBootstrap;
@@ -17,7 +20,6 @@ import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 
 @Slf4j
 public abstract class AbstractSocketNioServer {
@@ -26,7 +28,13 @@ public abstract class AbstractSocketNioServer {
 
     private Channel channel = null;
 
-    private SocketMsgHandler socketMsgHandler;
+    public Boolean getIsInit() {
+        return channel != null;
+    }
+
+    protected SocketMsgHandler msgHandler;
+
+    private final Cache<ChannelId, Channel> unknownChannelCache;
 
     private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
@@ -36,6 +44,17 @@ public abstract class AbstractSocketNioServer {
 
     public AbstractSocketNioServer(SocketServerConfig config) {
         this.config = config;
+        this.unknownChannelCache = Caffeine.newBuilder()
+                .expireAfterWrite(config.getUnknownWaitMsgTimeoutSeconds(), TimeUnit.SECONDS)
+                .removalListener((ChannelId key, Channel value, RemovalCause removalCause) -> {
+                    if (value != null) {
+                        if (!isClient(value)) {
+                            value.close();
+                            log.info("客户端channelId：{}，已关闭", value.id());
+                        }
+                    }
+                })
+                .build();
         this.initRunnable = () -> {
             try {
                 synchronized (this) {
@@ -70,11 +89,8 @@ public abstract class AbstractSocketNioServer {
                         Integer port = config.getPort();
                         ChannelFuture future = bootstrap.bind(port).sync();
                         channel = future.channel();
-                        if (socketMsgHandler == null) {
-                            socketMsgHandler = new SocketMsgHandler(
-                                    setDataConsumer()
-                                    , config.getMaxHandlerDataThreadCount()
-                            );
+                        if (msgHandler == null) {
+                            msgHandler = new SocketMsgHandler(this::read, config.getMaxHandlerDataThreadCount());
                         }
                         log.info("SocketNioServer已启动，开始监听端口: {}", port);
                         this.notify();
@@ -90,17 +106,22 @@ public abstract class AbstractSocketNioServer {
         };
     }
 
-    public Boolean getIsInit() {
-        return channel != null;
-    }
-
     public abstract Collection<ChannelHandler> setHandlers();
 
     public abstract ByteBuf encode(Channel channel, ByteBuf data);
 
-    public abstract ByteBuf decode(Channel channel, ByteBuf data, byte secretByte);
+    public abstract ByteBuf decode(Channel channel, ByteBuf data);
 
-    public abstract BiConsumer<Channel, byte[]> setDataConsumer();
+    public abstract void read(Channel channel, Object msg);
+
+    public void write(Channel socketChannel, Object msg) {
+        try {
+            socketChannel.writeAndFlush(msg);
+        } catch (Exception e) {
+            log.error("写入异常", e);
+            throw e;
+        }
+    }
 
     protected void channelRegisteredEvent(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
@@ -110,19 +131,15 @@ public abstract class AbstractSocketNioServer {
         } else {
             log.info("客户端channelId：{}，address：null，port：null，已注册", channel.id());
         }
+        unknownChannelCache.put(channel.id(), channel);
     }
 
     protected void channelUnregisteredEvent(ChannelHandlerContext ctx) {
         log.info("客户端channelId：{}，已注销", ctx.channel().id());
+        unknownChannelCache.invalidate(channel.id());
     }
 
-    protected void read(Channel channel, ByteBuf data) {
-        socketMsgHandler.read(channel, data);
-    }
-
-    public void write(Channel socketChannel, ByteBuf data) {
-        socketMsgHandler.write(socketChannel, data);
-    }
+    public abstract Boolean isClient(Channel channel);
 
     public void initNioServerAsync() {
         if (!getIsInit()) {
@@ -155,7 +172,7 @@ public abstract class AbstractSocketNioServer {
         if (getIsInit()) {
             synchronized (this) {
                 if (getIsInit()) {
-                    if (socketMsgHandler.shutdownNow()) {
+                    if (msgHandler.shutdownNow()) {
                         channel.close();
                         if (bootstrap != null) {
                             ServerBootstrapConfig config = bootstrap.config();
@@ -166,7 +183,7 @@ public abstract class AbstractSocketNioServer {
                         }
                         bootstrap = null;
                         channel = null;
-                        socketMsgHandler = null;
+                        msgHandler = null;
                     }
                 }
             }

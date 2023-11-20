@@ -18,7 +18,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 @Slf4j
 public abstract class SocketNioClient extends AbstractSocketNioClient {
@@ -54,7 +53,7 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
             Thread thread = Thread.currentThread();
             while (!thread.isInterrupted()) {
                 try {
-                    write(Unpooled.wrappedBuffer(heartbeatBytes));
+                    write(SocketMessageUtil.packageData(Unpooled.wrappedBuffer(heartbeatBytes), false));
                 } catch (Exception e) {
                     log.warn("TCP客户端心跳异常", e);
                 }
@@ -90,46 +89,45 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
     }
 
     @Override
-    public Consumer<byte[]> setDataConsumer() {
-        return bytes -> {
-            SocketMsgDataDto socketDataDto = readSocketDataDto(bytes);
-            Integer dataId = socketDataDto.getClientDataId();
-            if (dataId != null) {
-                SocketMsgDataDto syncDataDto = syncDataMap.get(dataId);
-                if (syncDataDto != null) {
-                    synchronized (syncDataDto) {
-                        syncDataDto.setData(socketDataDto.getData());
-                        syncDataDto.setCode(socketDataDto.getCode());
-                        syncDataDto.setMsg(socketDataDto.getMsg());
-                        syncDataDto.setMethod("syncReturn");
-                        syncDataDto.notify();
-                    }
-                }
-                //不再继续执行，即便method不为空
-                return;
-            }
-            String method = socketDataDto.getMethod();
-            if (StringUtils.isNotBlank(method)) {
-                if (socketDataDto.isSuccess()) {
-                    Integer serverDataId = socketDataDto.getServerDataId();
-                    SocketMsgDataDto syncDataDto;
-                    try {
-                        log.debug("服务端执行method：{}", method);
-                        syncDataDto = socketClientHandler.handle(method, socketDataDto, this);
-                    } catch (Exception e) {
-                        log.error("服务端执行method：{} 异常", method, e);
-                        syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
-                    }
-                    if (serverDataId != null) {
-                        syncDataDto.setServerDataId(serverDataId);
-                        write(syncDataDto);
-                    }
-                } else {
-                    log.error("服务端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
+    public void read(Channel channel, Object msg) {
+        byte[] bytes = (byte[]) msg;
+        SocketMsgDataDto socketDataDto = readSocketDataDto(bytes);
+        Integer dataId = socketDataDto.getClientDataId();
+        if (dataId != null) {
+            SocketMsgDataDto syncDataDto = syncDataMap.get(dataId);
+            if (syncDataDto != null) {
+                synchronized (syncDataDto) {
+                    syncDataDto.setData(socketDataDto.getData());
+                    syncDataDto.setCode(socketDataDto.getCode());
+                    syncDataDto.setMsg(socketDataDto.getMsg());
+                    syncDataDto.setMethod("syncReturn");
+                    syncDataDto.notify();
                 }
             }
-            log.debug("客户端已读");
-        };
+            //不再继续执行，即便method不为空
+            return;
+        }
+        String method = socketDataDto.getMethod();
+        if (StringUtils.isNotBlank(method)) {
+            if (socketDataDto.isSuccess()) {
+                Integer serverDataId = socketDataDto.getServerDataId();
+                SocketMsgDataDto syncDataDto;
+                try {
+                    log.debug("服务端执行method：{}", method);
+                    syncDataDto = socketClientHandler.handle(method, socketDataDto, this);
+                } catch (Exception e) {
+                    log.error("服务端执行method：{} 异常", method, e);
+                    syncDataDto = SocketMsgDataDto.buildError(e.getMessage());
+                }
+                if (serverDataId != null) {
+                    syncDataDto.setServerDataId(serverDataId);
+                    write(syncDataDto);
+                }
+            } else {
+                log.error("服务端处理失败：{}", JsonUtil.toJsonString(socketDataDto));
+            }
+        }
+        log.debug("客户端已读");
     }
 
     @Override
@@ -156,7 +154,7 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
     }
 
     public void write(SocketJSONDataDto data) {
-        write(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
+        write(SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), false));
     }
 
     public boolean writeAck(ByteBuf data, int seconds) {
@@ -218,7 +216,7 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
         syncDataMap.put(dataId, syncDataDto);
         try {
             synchronized (syncDataDto) {
-                write(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)));
+                write(SocketMessageUtil.packageData(Unpooled.wrappedBuffer(JsonUtil.toJsonString(data).getBytes(StandardCharsets.UTF_8)), false));
                 syncDataDto.wait(TimeUnit.SECONDS.toMillis(seconds));
             }
             SocketMsgDataDto socketDataDto = syncDataMap.remove(dataId);
@@ -285,7 +283,10 @@ public abstract class SocketNioClient extends AbstractSocketNioClient {
                     boolean sendOrReceiveAck = SocketMessageUtil.isAckData(decodeBytes);
                     if (length > 3) {
                         log.debug("数据已接收，channelId：{}", channelId);
-                        socketMsgHandler.read(ctx.channel(), SocketMessageUtil.unPackageData(decodeBytes));
+                        ByteBuf unPackageData = SocketMessageUtil.unPackageData(decodeBytes);
+                        byte[] bytes = new byte[unPackageData.writerIndex()];
+                        unPackageData.getBytes(0, bytes);
+                        msgHandler.read(ctx.channel(), bytes);
                         if (sendOrReceiveAck) {
                             byte[] ackBytes = SocketMessageUtil.getAckData(decodeBytes);
                             try {
