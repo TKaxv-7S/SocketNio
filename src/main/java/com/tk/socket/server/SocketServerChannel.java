@@ -1,5 +1,6 @@
 package com.tk.socket.server;
 
+import com.tk.socket.SocketMsgDataDto;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.util.Attribute;
@@ -30,7 +31,7 @@ public class SocketServerChannel implements Serializable {
      */
     private final Channel channel;
 
-    private final AbstractSocketNioServer server;
+    private final SocketNioServer<?> server;
 
     public String getClientKey() {
         return clientKey;
@@ -44,11 +45,11 @@ public class SocketServerChannel implements Serializable {
         return channel;
     }
 
-    public AbstractSocketNioServer getServer() {
+    public SocketNioServer<?> getServer() {
         return server;
     }
 
-    public SocketServerChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
+    public SocketServerChannel(String clientKey, Channel channel, SocketNioServer<?> server) {
         this.clientKey = StringUtils.isNotBlank(clientKey) ? clientKey : null;
         this.channelId = channel.id();
         this.channel = channel;
@@ -56,12 +57,28 @@ public class SocketServerChannel implements Serializable {
         channel.attr(APP_CLIENT_ATTR).set(clientKey);
     }
 
-    public static SocketServerChannel build(String clientKey, Channel channel, AbstractSocketNioServer server) {
+    public static SocketServerChannel build(String clientKey, Channel channel, SocketNioServer<?> server) {
         return new SocketServerChannel(clientKey, channel, server);
     }
 
-    public void write(Object data) {
-        server.write(channel, data);
+    public void write(SocketMsgDataDto data) {
+        server.write(data, channel);
+    }
+
+    public boolean writeAck(SocketMsgDataDto data) {
+        return server.writeAck(data, channel);
+    }
+
+    public boolean writeAck(SocketMsgDataDto data, int seconds) {
+        return server.writeAck(data, channel, seconds);
+    }
+
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
+        return server.writeSync(data, 10, channel);
+    }
+
+    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
+        return server.writeSync(data, seconds, channel);
     }
 
     public <T> void setAttr(String key, T value) {

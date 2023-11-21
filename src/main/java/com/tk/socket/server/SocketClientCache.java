@@ -51,7 +51,7 @@ public abstract class SocketClientCache<S extends SocketServerSecretDto> {
             })
             .build();
 
-    public Boolean addChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
+    public Boolean addChannel(String clientKey, Channel channel, SocketNioServer<?> server) {
         SocketServerChannelQueue serverChannelQueue;
         synchronized (cache) {
             serverChannelQueue = cache.getIfPresent(clientKey);
