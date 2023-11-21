@@ -44,6 +44,10 @@ public class SocketServerChannel implements Serializable {
         return channel;
     }
 
+    public AbstractSocketNioServer getServer() {
+        return server;
+    }
+
     public SocketServerChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
         this.clientKey = StringUtils.isNotBlank(clientKey) ? clientKey : null;
         this.channelId = channel.id();
