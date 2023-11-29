@@ -1,48 +1,67 @@
 package com.tk.socket.server;
 
-import com.tk.socket.SocketMsgDataDto;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelId;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serializable;
 
-public class SocketServerChannel extends SocketServerBaseChannel implements Serializable {
+public class SocketServerBaseChannel implements Serializable {
 
-    private final SocketNioServer<?> server;
+    private static final long serialVersionUID = 1L;
 
-    public SocketNioServer<?> getServer() {
+    //客户端appKey属性key
+    protected static final AttributeKey<String> APP_CLIENT_ATTR = AttributeKey.valueOf("appKey");
+
+    /**
+     * clientKey
+     */
+    protected final String clientKey;
+
+    /**
+     * channelId
+     */
+    protected final ChannelId channelId;
+
+    /**
+     * channel
+     */
+    protected final Channel channel;
+
+    protected final AbstractSocketNioServer server;
+
+    public String getClientKey() {
+        return clientKey;
+    }
+
+    public ChannelId getChannelId() {
+        return channelId;
+    }
+
+    public Channel getChannel() {
+        return channel;
+    }
+
+    public AbstractSocketNioServer getServer() {
         return server;
     }
 
-    public SocketServerChannel(String clientKey, Channel channel, SocketNioServer<?> server) {
-        super(clientKey, channel, server);
+    public SocketServerBaseChannel(String clientKey, Channel channel, AbstractSocketNioServer server) {
+        this.clientKey = StringUtils.isNotBlank(clientKey) ? clientKey : null;
+        this.channelId = channel.id();
+        this.channel = channel;
         this.server = server;
+        channel.attr(APP_CLIENT_ATTR).set(clientKey);
     }
 
-    public static SocketServerChannel build(String clientKey, Channel channel, SocketNioServer<?> server) {
-        return new SocketServerChannel(clientKey, channel, server);
+    public static SocketServerBaseChannel build(String clientKey, Channel channel, AbstractSocketNioServer server) {
+        return new SocketServerBaseChannel(clientKey, channel, server);
     }
 
-    public void write(SocketMsgDataDto data) {
-        server.write(data, channel);
-    }
-
-    public boolean writeAck(SocketMsgDataDto data) {
-        return server.writeAck(data, channel);
-    }
-
-    public boolean writeAck(SocketMsgDataDto data, int seconds) {
-        return server.writeAck(data, channel, seconds);
-    }
-
-    public SocketMsgDataDto writeSync(SocketMsgDataDto data) {
-        return server.writeSync(data, 10, channel);
-    }
-
-    public SocketMsgDataDto writeSync(SocketMsgDataDto data, int seconds) {
-        return server.writeSync(data, seconds, channel);
+    public void write(Object msg) {
+        server.write(channel, msg);
     }
 
     public <T> void setAttr(String key, T value) {
